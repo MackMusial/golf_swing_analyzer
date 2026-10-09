@@ -2,11 +2,25 @@
 
 A phone app that tracks your joints in a golf swing video and critiques the swing.
 
-These steps start from a brand-new Windows 10/11 PC with nothing installed. Setup takes about 30–60 minutes, mostly downloads.
+## Easy way (Windows): two double-clicks
+
+1. Get the project folder onto the PC and open it.
+2. Double-click **`Setup.bat`**. Click **Yes** when Windows asks for permission. It installs everything (Git, Java, Flutter, the Android SDK and an emulator), which is about 5 GB and 20–60 minutes. Run it only once.
+   - If it says **RESTART YOUR PC** at the end, restart.
+3. Double-click **`Run.bat`**. A phone window (the emulator) opens and boots, then the app builds and opens on it. The first build takes several minutes. After that it's fast.
+   - If an Android phone with USB debugging is plugged in, Run.bat uses the phone instead of the emulator.
+
+**To test with a swing video:** drag an `.mp4` onto the emulator window, then in the app tap **Upload from library**.
+
+If Setup.bat fails, the error and a `setup.log` file say why. Fix the problem and run it again. Finished steps get skipped. If the emulator won't start even after a restart, turn on virtualization (Intel VT-x / AMD-V / SVM) in the PC's BIOS settings.
+
+The manual steps below do the same thing by hand.
 
 ---
 
-## Part 1: Install everything (one time)
+## Part 1: Install everything by hand (one time)
+
+These steps start from a brand-new Windows 10/11 PC with nothing installed. Setup takes about 30–60 minutes, mostly downloads.
 
 ### 1. Install Git and Android Studio
 Click Start, type **PowerShell**, open it, and paste:
