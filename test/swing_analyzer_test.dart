@@ -90,6 +90,39 @@ void main() {
     expect(analysis.metrics.firstWhere((m) => m.id == 'head_sway').severity, 0);
   });
 
+  test('strike sound sets the impact frame and tempo', () {
+    // Hands bottom out at 2000ms; say the strike was heard at 2066ms.
+    final analysis = analyzeSwing(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      rawFrames: frames,
+      impactSoundMs: 2066,
+    );
+    expect(analysis.impactSoundMs, 2066);
+    // Last frame at or before the strike: 2046 (frames are every 33ms).
+    expect(analysis.frames[analysis.keyFrames!.impact].timeMs, 2046);
+    // A later impact means a longer downswing, so the tempo ratio drops.
+    double tempoOf(SwingAnalysis a) =>
+        a.metrics.firstWhere((m) => m.id == 'tempo').value;
+    final handsOnly = analyzeSwing(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      rawFrames: frames,
+    );
+    expect(tempoOf(analysis), lessThan(tempoOf(handsOnly) * 0.9));
+  });
+
+  test('ignores a strike sound outside the downswing', () {
+    final analysis = analyzeSwing(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      rawFrames: frames,
+      impactSoundMs: 1000, // during the backswing
+    );
+    expect(analysis.impactSoundMs, isNull);
+    expect(analysis.frames[analysis.keyFrames!.impact].timeMs, closeTo(2000, 70));
+  });
+
   test('reports an error when no swing happens', () {
     final still = [for (var ms = 0; ms < 2000; ms += 33) fakeFrame(0)]
         .indexed

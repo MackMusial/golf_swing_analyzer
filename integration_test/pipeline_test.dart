@@ -46,6 +46,7 @@ void main() {
       debugPrint('TRACE ${f.timeMs} hand=${h.dx.round()},${h.dy.round()} hip=${hip.dx.round()},${hip.dy.round()} torso=${torsoLength(f).round()}');
     }
     debugPrint('RESULT frames=${analysis.frames.length}/${analysis.totalFramesSampled} error=${analysis.error}');
+    debugPrint('RESULT impactSoundMs=${analysis.impactSoundMs}');
     final keys = analysis.keyFrames;
     if (keys != null) {
       for (final phase in SwingPhase.values) {
@@ -68,6 +69,10 @@ void main() {
     await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
     await tester.pump();
     if (keys != null) {
+      await tester.tap(find.text('Impact').first);
+      await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
+      await tester.pump();
+      await hold('impact');
       await tester.tap(find.text('Top').first);
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
       await tester.pump();

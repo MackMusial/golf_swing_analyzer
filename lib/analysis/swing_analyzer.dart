@@ -8,14 +8,19 @@ import '../models/swing_models.dart';
 typedef L = PoseLandmarkType;
 
 /// Turns raw per-frame poses into key moments, metrics and corrections.
+///
+/// [impactSoundMs] is when the strike was heard (see impact_sound.dart). When
+/// it falls inside the downswing it sets the impact frame, since the sound is
+/// far more precise than the hands.
 SwingAnalysis analyzeSwing({
   required String videoPath,
   required SwingSettings settings,
   required List<PoseFrame> rawFrames,
+  int? impactSoundMs,
 }) {
   final posed = rawFrames.where((f) => f.hasPose).toList();
   SwingAnalysis result(List<PoseFrame> frames, KeyFrames? keys,
-          List<Metric> metrics, [String? error]) =>
+          List<Metric> metrics, [String? error, int? soundMs]) =>
       SwingAnalysis(
         videoPath: videoPath,
         settings: settings,
@@ -24,6 +29,7 @@ SwingAnalysis analyzeSwing({
         keyFrames: keys,
         metrics: metrics,
         error: error,
+        impactSoundMs: soundMs,
       );
 
   if (posed.length < 8) {
@@ -32,12 +38,42 @@ SwingAnalysis analyzeSwing({
   }
 
   final frames = smoothFrames(posed);
-  final keys = detectKeyFrames(frames);
+  var keys = detectKeyFrames(frames);
   if (keys == null) {
     return result(frames, null, const [],
         'Tracked your body, but couldn\'t find a full swing. Try a clip with one complete swing from address to finish.');
   }
-  return result(frames, keys, computeMetrics(frames, keys, settings));
+
+  final sound = impactSoundMs;
+  final soundUsable = sound != null &&
+      sound > frames[keys.top].timeMs &&
+      sound < frames[keys.finish].timeMs;
+  if (soundUsable) {
+    keys = KeyFrames(
+      address: keys.address,
+      top: keys.top,
+      impact: contactFrame(frames, sound),
+      finish: keys.finish,
+    );
+  }
+  final usedSound = soundUsable ? sound : null;
+  return result(
+    frames,
+    keys,
+    computeMetrics(frames, keys, settings, impactMs: usedSound),
+    null,
+    usedSound,
+  );
+}
+
+/// Index of the frame on screen when the strike was heard: the last one at or
+/// before [strikeMs]. A frame after it would already show the ball leaving.
+int contactFrame(List<PoseFrame> frames, int strikeMs) {
+  var best = 0;
+  for (var i = 0; i < frames.length; i++) {
+    if (frames[i].timeMs <= strikeMs + 2) best = i;
+  }
+  return best;
 }
 
 /// Light 1-2-1 smoothing over neighbouring frames to cut detector jitter.
@@ -123,8 +159,26 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   }
   final movingDown = hands[math.min(fastest + 1, n - 1)].dy >
       hands[math.max(fastest - 1, 0)].dy;
-  final impact = climb(fastest, movingDown ? 1 : -1, higher: false);
-  final top = climb(impact, -1, higher: true);
+  final lowest = climb(fastest, movingDown ? 1 : -1, higher: false);
+  final top = climb(lowest, -1, higher: true);
+  // Around impact the hands travel almost level for a moment, so the single
+  // lowest frame is mostly detector noise and tends to land early. Use the
+  // middle of that flat bottom instead.
+  final flatTol = scale * 0.035;
+  var flatStart = lowest, flatEnd = lowest;
+  while (flatStart - 1 > top &&
+      hands[lowest].dy - hands[flatStart - 1].dy <= flatTol) {
+    flatStart--;
+  }
+  while (flatEnd + 1 < n &&
+      hands[lowest].dy - hands[flatEnd + 1].dy <= flatTol) {
+    flatEnd++;
+  }
+  final midMs = (frames[flatStart].timeMs + frames[flatEnd].timeMs) / 2;
+  var impact = flatStart;
+  while (impact + 1 <= flatEnd && frames[impact + 1].timeMs <= midMs) {
+    impact++;
+  }
   final finish = climb(impact, 1, higher: true);
 
   // Address: hands lowest before the top, then the last frame before the
@@ -174,8 +228,11 @@ double spineLean(PoseFrame f) {
 
 double _rad2deg(double r) => r * 180 / math.pi;
 
+/// [impactMs], when known from the strike sound, is used for tempo instead of
+/// the hand-based estimate.
 List<Metric> computeMetrics(
-    List<PoseFrame> frames, KeyFrames keys, SwingSettings settings) {
+    List<PoseFrame> frames, KeyFrames keys, SwingSettings settings,
+    {int? impactMs}) {
   final address = frames[keys.address];
   final top = frames[keys.top];
   final impact = frames[keys.impact];
@@ -193,7 +250,8 @@ List<Metric> computeMetrics(
 
   // Tempo: backswing time vs downswing time. Tour average is about 3:1.
   final back = peakTimeMs(frames, keys.top) - address.timeMs;
-  final down = peakTimeMs(frames, keys.impact) - peakTimeMs(frames, keys.top);
+  final down = (impactMs ?? peakTimeMs(frames, keys.impact)) -
+      peakTimeMs(frames, keys.top);
   if (back > 0 && down > 0) {
     metrics.add(Metric(
       id: 'tempo',

@@ -16,6 +16,8 @@ A phone app that tracks your joints in a golf swing video and critiques the swin
 **To add your own swing video to the emulator:** with the emulator running, double-click **`AddVideo.bat`** and pick the video, or drag video files onto AddVideo.bat. Then in the app tap **Upload from library**.
 - Videos from an iPhone can be HEVC, which the emulator may not decode well. Filming with iPhone Settings → Camera → Formats → **Most Compatible** avoids that.
 
+**Filming tips for accurate impact:** hit a real ball with sound on. The app finds the exact moment of contact from the sound of the strike. Without it, impact is estimated from your hands and can be a frame or two early. Slow-mo (120/240 fps) makes the impact frame even sharper.
+
 If Setup.bat fails, the error and a `setup.log` file say why. Fix the problem and run it again. Finished steps get skipped. If the emulator won't start even after a restart, turn on virtualization (Intel VT-x / AMD-V / SVM) in the PC's BIOS settings.
 
 The manual steps below do the same thing by hand.

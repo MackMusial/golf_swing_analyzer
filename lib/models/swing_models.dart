@@ -170,6 +170,10 @@ class SwingAnalysis {
   final List<Metric> metrics;
   final String? error;
 
+  /// When the club hit the ball, from the sound of the strike. Null when the
+  /// video has no clear strike sound and impact was estimated from the hands.
+  final int? impactSoundMs;
+
   const SwingAnalysis({
     required this.videoPath,
     required this.settings,
@@ -178,6 +182,7 @@ class SwingAnalysis {
     required this.keyFrames,
     required this.metrics,
     this.error,
+    this.impactSoundMs,
   });
 
   /// Metrics outside their ideal range, worst first.

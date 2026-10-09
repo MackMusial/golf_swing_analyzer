@@ -99,6 +99,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Text(
               'Tracked a body in ${a.frames.length} of ${a.totalFramesSampled} frames. '
+              '${a.impactSoundMs != null ? 'Impact was found from the sound of the strike. ' : 'No strike sound was heard, so impact is estimated from your hands. '}'
               'Measurements are 2D estimates from one camera angle (${a.settings.view.label}), so treat them as a guide, not gospel.',
               style: theme.textTheme.bodySmall,
             ),
