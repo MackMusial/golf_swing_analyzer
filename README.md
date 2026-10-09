@@ -4,8 +4,9 @@ A phone app that tracks your joints in a golf swing video and critiques the swin
 
 ## Easy way (Windows): two double-clicks
 
-1. Get the project folder onto the PC and open it.
-2. Double-click **`Setup.bat`**. Click **Yes** when Windows asks for permission. It installs everything (Git, Java, Flutter, the Android SDK and an emulator), which is about 5 GB and 20–60 minutes. Run it only once.
+1. Download the project: on https://github.com/MackMusial/golf_swing_analyzer click **Code → Download ZIP**. Right-click the downloaded zip and choose **Extract All**, then open the extracted folder.
+   - Don't run anything from inside the zip window. The scripts need the extracted files.
+2. Double-click **`Setup.bat`**. If Windows shows "Windows protected your PC", click **More info → Run anyway**. Click **Yes** when Windows asks for permission. It installs everything (Git, Java, Flutter, the Android SDK and an emulator), which is about 5 GB and 20–60 minutes. Run it only once.
    - If it says **RESTART YOUR PC** at the end, restart.
 3. Double-click **`Run.bat`**. A phone window (the emulator) opens and boots, then the app builds and opens on it. The first build takes several minutes. After that it's fast.
    - If an Android phone with USB debugging is plugged in, Run.bat uses the phone instead of the emulator.
@@ -61,7 +62,12 @@ flutter doctor
 You want green checks next to **Flutter** and **Android toolchain**. Red X's for **Visual Studio** or **Chrome** are fine to ignore.
 
 ### 6. Get the project
-Copy the `golf_swing_analyzer` folder onto the PC, for example to `C:\dev\golf_swing_analyzer`.
+Git is installed from step 1, so in PowerShell run:
+```
+cd C:\dev
+git clone https://github.com/MackMusial/golf_swing_analyzer.git
+```
+This puts the project in `C:\dev\golf_swing_analyzer`. Or download the ZIP as in the easy way and extract it there.
 
 ---
 
