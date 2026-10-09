@@ -11,7 +11,8 @@ A phone app that tracks your joints in a golf swing video and critiques the swin
 3. Double-click **`Run.bat`**. A phone window (the emulator) opens and boots, then the app builds and opens on it. The first build takes several minutes. After that it's fast.
    - If an Android phone with USB debugging is plugged in, Run.bat uses the phone instead of the emulator.
 
-**To test with a swing video:** drag an `.mp4` onto the emulator window, then in the app tap **Upload from library**.
+**To add a swing video to the emulator:** with the emulator running, double-click **`AddVideo.bat`** and pick the video, or drag video files onto AddVideo.bat. Then in the app tap **Upload from library**.
+- Videos from an iPhone can be HEVC, which the emulator may not decode well. Filming with iPhone Settings → Camera → Formats → **Most Compatible** avoids that.
 
 If Setup.bat fails, the error and a `setup.log` file say why. Fix the problem and run it again. Finished steps get skipped. If the emulator won't start even after a restart, turn on virtualization (Intel VT-x / AMD-V / SVM) in the PC's BIOS settings.
 
