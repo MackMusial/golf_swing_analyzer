@@ -1,7 +1,10 @@
 # Starts the app: on a plugged-in Android phone if there is one, otherwise on
 # the emulator that setup.ps1 created. Launched by Run.bat in the project root.
 
-$ErrorActionPreference = 'Stop'
+# Not 'Stop': in Windows PowerShell 5.1 that turns harmless adb stderr chatter
+# ("daemon not running; starting now", "device offline" while booting) into a
+# fatal error. Real failures are thrown explicitly below.
+$ErrorActionPreference = 'Continue'
 
 $AvdName = 'GolfPhone'
 $ProjectDir = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -54,6 +57,23 @@ try {
         Write-Progress -Activity 'Booting the emulator' -Completed
         $target = @(Get-Devices | Where-Object { $_ -like 'emulator-*' })[0]
         Write-Host 'Emulator ready.' -ForegroundColor Green
+    }
+
+    # Put the sample swings in the emulator's photo library (not on real phones).
+    if ($target -like 'emulator-*') {
+        $existing = & $adb -s $target shell ls /sdcard/Movies 2>$null
+        $added = 0
+        foreach ($clip in Get-ChildItem "$ProjectDir\samples\*.mp4" -ErrorAction SilentlyContinue) {
+            if ($existing -notcontains $clip.Name) {
+                if ($added -eq 0) { & $adb -s $target shell mkdir -p /sdcard/Movies | Out-Null }
+                & $adb -s $target push $clip.FullName "/sdcard/Movies/$($clip.Name)" | Out-Null
+                $added++
+            }
+        }
+        if ($added -gt 0) {
+            & $adb -s $target shell content call --method scan_volume --uri content://media --arg external_primary | Out-Null
+            Write-Host "Added $added sample swing video(s) to the emulator's library." -ForegroundColor Green
+        }
     }
 
     Write-Host "`nBuilding and installing the app. The first time takes 3-10 minutes." -ForegroundColor Cyan

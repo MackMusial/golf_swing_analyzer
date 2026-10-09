@@ -177,7 +177,7 @@ try {
     Add-UserPath "$FlutterDir\bin"
     $env:Path += ";$FlutterDir\bin"
     # Fresh installs fail Git's "dubious ownership" check when run elevated.
-    git config --global --add safe.directory '*' 2>$null
+    try { git config --global --add safe.directory '*' 2>$null } catch { }
 
     # 5. Android SDK command-line tools
     Step 5 'Installing Android SDK tools'
