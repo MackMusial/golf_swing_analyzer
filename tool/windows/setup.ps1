@@ -4,7 +4,6 @@
 # Launched by Setup.bat in the project root.
 
 $ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest is ~10x slower with the progress bar
 
 $FlutterVersion = '3.47.7'
 $CmdlineToolsZip = 'commandlinetools-win-13114758_latest.zip'
@@ -32,7 +31,11 @@ if (-not $isAdmin) {
 Start-Transcript -Path $LogFile -Append | Out-Null
 $needsReboot = $false
 
-function Step($n, $text) { Write-Host "`n[$n/9] $text" -ForegroundColor Cyan }
+function Step($n, $text) {
+    Write-Host "`n[$n/9] $text" -ForegroundColor Cyan
+    Write-Progress -Id 0 -Activity 'Golf Swing Analyzer setup' -Status "Step $n of 9: $text" `
+        -PercentComplete ([int](($n - 1) / 9 * 100))
+}
 function Ok($text) { Write-Host "      $text" -ForegroundColor Green }
 
 function Refresh-Path {
@@ -48,9 +51,66 @@ function Add-UserPath($dir) {
     }
 }
 
+# Streams a download to disk with a progress bar (MB done, speed, time left).
+# Invoke-WebRequest's own bar is very slow and shows no speed, so we do it by hand.
 function Download($url, $dest) {
-    Write-Host "      Downloading $(Split-Path $url -Leaf)..."
-    Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+    $name = Split-Path $url -Leaf
+    Write-Host "      Downloading $name..."
+    Add-Type -AssemblyName System.Net.Http
+    $client = New-Object System.Net.Http.HttpClient
+    $client.Timeout = [TimeSpan]::FromHours(3)
+    $in = $null; $out = $null
+    try {
+        $resp = $client.GetAsync($url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
+        $resp.EnsureSuccessStatusCode() | Out-Null
+        $total = $resp.Content.Headers.ContentLength
+        $in = $resp.Content.ReadAsStreamAsync().Result
+        $out = [IO.File]::Create($dest)
+        $buf = New-Object byte[] (1MB)
+        $done = 0L
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $lastUpdate = -1000
+        while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+            $out.Write($buf, 0, $n)
+            $done += $n
+            if ($sw.ElapsedMilliseconds - $lastUpdate -ge 500) {
+                $lastUpdate = $sw.ElapsedMilliseconds
+                $mbps = ($done / 1MB) / [Math]::Max($sw.Elapsed.TotalSeconds, 0.1)
+                $status = '{0:N0} MB' -f ($done / 1MB)
+                if ($total) {
+                    $pct = [int]($done * 100 / $total)
+                    $left = [int](($total - $done) / 1MB / [Math]::Max($mbps, 0.01))
+                    $status = '{0:N0} of {1:N0} MB  ({2:N1} MB/s)' -f ($done / 1MB), ($total / 1MB), $mbps
+                    Write-Progress -Id 1 -ParentId 0 -Activity "Downloading $name" -Status $status `
+                        -PercentComplete $pct -SecondsRemaining $left
+                } else {
+                    Write-Progress -Id 1 -ParentId 0 -Activity "Downloading $name" -Status $status
+                }
+            }
+        }
+        Write-Host ('      Downloaded {0:N0} MB in {1:N0}s' -f ($done / 1MB), $sw.Elapsed.TotalSeconds)
+    }
+    finally {
+        if ($out) { $out.Dispose() }
+        if ($in) { $in.Dispose() }
+        $client.Dispose()
+        Write-Progress -Id 1 -Activity "Downloading $name" -Completed
+    }
+}
+
+# Runs a long, quiet command while showing a "still working" bar with elapsed time.
+function Run-WithTimer($activity, $exe, $arguments) {
+    $p = Start-Process $exe -ArgumentList $arguments -NoNewWindow -PassThru
+    $null = $p.Handle   # without touching Handle, ExitCode comes back empty
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $p.HasExited) {
+        Write-Progress -Id 1 -ParentId 0 -Activity $activity `
+            -Status ('Still working... {0:mm\:ss} elapsed' -f $sw.Elapsed)
+        Start-Sleep -Milliseconds 500
+    }
+    $p.WaitForExit()
+    Write-Progress -Id 1 -Activity $activity -Completed
+    if ($p.ExitCode -ne 0) { throw "$activity failed (exit code $($p.ExitCode))." }
 }
 
 # Pipes a stream of "y" answers into a command that asks to accept licenses.
@@ -76,7 +136,7 @@ try {
     Refresh-Path
     if (Get-Command git -ErrorAction SilentlyContinue) { Ok 'already installed' }
     else {
-        winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements | Out-Host
+        winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements
         Refresh-Path
         Ok 'installed'
     }
@@ -87,7 +147,7 @@ try {
            Sort-Object Name -Descending | Select-Object -First 1
     if ($jdk) { Ok "already installed ($($jdk.Name))" }
     else {
-        winget install --id Microsoft.OpenJDK.21 -e --silent --accept-source-agreements --accept-package-agreements | Out-Host
+        winget install --id Microsoft.OpenJDK.21 -e --silent --accept-source-agreements --accept-package-agreements
         $jdk = Get-ChildItem 'C:\Program Files\Microsoft' -Directory -Filter 'jdk-*' |
                Sort-Object Name -Descending | Select-Object -First 1
         if (-not $jdk) { throw 'Java install finished but no JDK folder was found in C:\Program Files\Microsoft.' }
@@ -110,7 +170,7 @@ try {
         $zip = "$env:TEMP\flutter.zip"
         Download "$($releases.base_url)/$($rel.archive)" $zip
         Write-Host '      Unzipping (a few minutes)...'
-        tar.exe -xf $zip -C $DevDir
+        Run-WithTimer 'Unzipping Flutter' 'tar.exe' @('-xf', "`"$zip`"", '-C', "`"$DevDir`"")
         Remove-Item $zip
         Ok "installed to $FlutterDir"
     }
@@ -143,7 +203,8 @@ try {
     # 6. Android SDK packages + emulator image
     Step 6 'Installing Android SDK packages and emulator (the big download)'
     Accept-All { & $sdkmanager --licenses }
-    & $sdkmanager --install 'platform-tools' 'emulator' "platforms;android-$AndroidApi" "build-tools;$BuildTools" $SystemImage | Out-Host
+    # Not piped, so sdkmanager's own [=====   ] 40% progress bar shows.
+    & $sdkmanager --install 'platform-tools' 'emulator' "platforms;android-$AndroidApi" "build-tools;$BuildTools" $SystemImage
     Ok 'done'
 
     # 7. Emulator (virtual phone)
@@ -172,12 +233,15 @@ try {
 
     # 9. Flutter config + project packages
     Step 9 'Setting up Flutter and the project'
+    Write-Host '      First Flutter run downloads its Dart tools (a few minutes)...'
+    & "$FlutterDir\bin\flutter.bat" --version
     & "$FlutterDir\bin\flutter.bat" config --android-sdk $AndroidSdk --no-analytics | Out-Null
     Accept-All { & "$FlutterDir\bin\flutter.bat" doctor --android-licenses }
     Push-Location $ProjectDir
-    & "$FlutterDir\bin\flutter.bat" pub get | Out-Host
+    & "$FlutterDir\bin\flutter.bat" pub get
     Pop-Location
-    & "$FlutterDir\bin\flutter.bat" doctor | Out-Host
+    & "$FlutterDir\bin\flutter.bat" doctor
+    Write-Progress -Id 0 -Activity 'Golf Swing Analyzer setup' -Completed
 
     Write-Host "`n========================================================" -ForegroundColor Green
     Write-Host ' Setup finished!' -ForegroundColor Green

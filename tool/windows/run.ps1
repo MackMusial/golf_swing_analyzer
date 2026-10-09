@@ -42,11 +42,16 @@ try {
         Start-Process $emulator -ArgumentList '-avd', $AvdName
         & $adb wait-for-device
         Write-Host 'Waiting for the emulator to finish booting (1-3 minutes the first time)...'
-        $deadline = (Get-Date).AddMinutes(6)
+        $sw = [Diagnostics.Stopwatch]::StartNew()
         while ((& $adb shell getprop sys.boot_completed 2>$null) -ne '1') {
-            if ((Get-Date) -gt $deadline) { throw 'The emulator took too long to boot. Close it and run Run.bat again.' }
-            Start-Sleep -Seconds 3
+            if ($sw.Elapsed.TotalMinutes -gt 6) { throw 'The emulator took too long to boot. Close it and run Run.bat again.' }
+            # Typical first boot is ~2 minutes; cap the bar at 95% until it's actually done.
+            $pct = [Math]::Min(95, [int]($sw.Elapsed.TotalSeconds / 120 * 100))
+            Write-Progress -Activity 'Booting the emulator' -PercentComplete $pct `
+                -Status ('Still booting... {0:mm\:ss} elapsed' -f $sw.Elapsed)
+            Start-Sleep -Seconds 2
         }
+        Write-Progress -Activity 'Booting the emulator' -Completed
         $target = @(Get-Devices | Where-Object { $_ -like 'emulator-*' })[0]
         Write-Host 'Emulator ready.' -ForegroundColor Green
     }
