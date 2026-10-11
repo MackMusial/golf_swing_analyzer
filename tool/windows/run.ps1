@@ -70,9 +70,21 @@ try {
                 $added++
             }
         }
-        if ($added -gt 0) {
+        # Remove samples that newer versions dropped. Only sample_* files, so
+        # videos the user added themselves are left alone.
+        $current = @(Get-ChildItem "$ProjectDir\samples\*.mp4" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+        $removed = 0
+        foreach ($name in $existing) {
+            $name = "$name".Trim()
+            if ($name -like 'sample_*.mp4' -and $current -notcontains $name) {
+                & $adb -s $target shell rm "/sdcard/Movies/$name" | Out-Null
+                $removed++
+            }
+        }
+        if ($added -gt 0 -or $removed -gt 0) {
             & $adb -s $target shell content call --method scan_volume --uri content://media --arg external_primary | Out-Null
-            Write-Host "Added $added sample swing video(s) to the emulator's library." -ForegroundColor Green
+            if ($added -gt 0) { Write-Host "Added $added sample swing video(s) to the emulator's library." -ForegroundColor Green }
+            if ($removed -gt 0) { Write-Host "Removed $removed old sample video(s)." -ForegroundColor Green }
         }
     }
 

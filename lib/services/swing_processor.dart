@@ -88,6 +88,15 @@ class SwingProcessor {
         ),
       );
 
+      if (frames.isEmpty) {
+        // The decoder handed back no images at all, so this isn't a tracking
+        // problem. Seen with HDR video on the Android emulator.
+        throw Exception(
+            'Couldn\'t read the frames of this video. If it was filmed in HDR '
+            '(the iPhone default), turn HDR Video off in Settings → Camera → '
+            'Record Video, or export it as standard video, and try again.');
+      }
+
       onProgress?.call(1, 'Pinpointing contact…');
       final (allFrames, strikeMs) = await _refineImpact(
           detector, videoPath, outDir, frames, fps,

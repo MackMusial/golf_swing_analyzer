@@ -19,33 +19,49 @@ SwingAnalysis analyzeSwing({
   int? impactSoundMs,
 }) {
   final posed = rawFrames.where((f) => f.hasPose).toList();
-  SwingAnalysis result(List<PoseFrame> frames, KeyFrames? keys,
-          List<Metric> metrics, [String? error, int? soundMs]) =>
-      SwingAnalysis(
-        videoPath: videoPath,
-        settings: settings,
-        frames: frames,
-        totalFramesSampled: rawFrames.length,
-        keyFrames: keys,
-        metrics: metrics,
-        error: error,
-        impactSoundMs: soundMs,
-      );
+  SwingAnalysis result(
+    List<PoseFrame> frames,
+    KeyFrames? keys,
+    List<Metric> metrics, [
+    String? error,
+    int? soundMs,
+    SwingSettings? used,
+    String? notice,
+  ]) => SwingAnalysis(
+    videoPath: videoPath,
+    settings: used ?? settings,
+    notice: notice,
+    frames: frames,
+    totalFramesSampled: rawFrames.length,
+    keyFrames: keys,
+    metrics: metrics,
+    error: error,
+    impactSoundMs: soundMs,
+  );
 
   if (posed.length < 8) {
-    return result(posed, null, const [],
-        'Couldn\'t find a golfer in enough frames. Make sure your whole body is in the shot and well lit.');
+    return result(
+      posed,
+      null,
+      const [],
+      'Couldn\'t find a golfer in enough frames. Make sure your whole body is in the shot and well lit.',
+    );
   }
 
   final frames = smoothFrames(posed);
   var keys = detectKeyFrames(frames);
   if (keys == null) {
-    return result(frames, null, const [],
-        'Tracked your body, but couldn\'t find a full swing. Try a clip with one complete swing from address to finish.');
+    return result(
+      frames,
+      null,
+      const [],
+      'Tracked your body, but couldn\'t find a full swing. Try a clip with one complete swing from address to finish. Chips and putts aren\'t analyzed yet.',
+    );
   }
 
   final sound = impactSoundMs;
-  final soundUsable = sound != null &&
+  final soundUsable =
+      sound != null &&
       sound > frames[keys.top].timeMs &&
       sound < frames[keys.finish].timeMs;
   if (soundUsable) {
@@ -57,12 +73,26 @@ SwingAnalysis analyzeSwing({
     );
   }
   final usedSound = soundUsable ? sound : null;
+
+  // People often pick the wrong camera angle, and every angle-specific metric
+  // is then nonsense. When the video clearly shows the other angle, use it.
+  var used = settings;
+  String? notice;
+  final seen = detectCameraView(frames, keys.address);
+  if (seen != null && seen != settings.view) {
+    used = SwingSettings(handedness: settings.handedness, view: seen);
+    notice =
+        'You picked ${settings.view.label}, but this video looks '
+        '${seen.label.toLowerCase()}, so it was analyzed as ${seen.label}.';
+  }
   return result(
     frames,
     keys,
-    computeMetrics(frames, keys, settings, impactMs: usedSound),
+    computeMetrics(frames, keys, used, impactMs: usedSound),
     null,
     usedSound,
+    used,
+    notice,
   );
 }
 
@@ -88,8 +118,11 @@ List<PoseFrame> smoothFrames(List<PoseFrame> input) {
       else
         frames[i].withJoints({
           for (final entry in frames[i].joints!.entries)
-            entry.key: _blend(frames[i - 1].joints![entry.key], entry.value,
-                frames[i + 1].joints![entry.key]),
+            entry.key: _blend(
+              frames[i - 1].joints![entry.key],
+              entry.value,
+              frames[i + 1].joints![entry.key],
+            ),
         }),
   ];
 }
@@ -203,7 +236,8 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   for (var i = 1; i < n; i++) {
     if (speed[i] > speed[fastest]) fastest = i;
   }
-  final movingDown = hands[math.min(fastest + 1, n - 1)].dy >
+  final movingDown =
+      hands[math.min(fastest + 1, n - 1)].dy >
       hands[math.max(fastest - 1, 0)].dy;
   final lowest = climb(fastest, movingDown ? 1 : -1, higher: false);
   final top = climb(lowest, -1, higher: true);
@@ -225,22 +259,97 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   while (impact + 1 <= flatEnd && frames[impact + 1].timeMs <= midMs) {
     impact++;
   }
-  final finish = climb(impact, 1, higher: true);
-
-  // Address: hands lowest before the top, then the last frame before the
-  // hands have clearly left that spot (start of takeaway).
-  final low = climb(top, -1, higher: false);
-  final rise = hands[low].dy - hands[top].dy;
-  var address = low;
-  while (address + 1 < top &&
-      (hands[address + 1] - hands[low]).distance < rise * 0.015) {
-    address++;
+  // Golfers hold the finish, and the hands often keep drifting up slowly
+  // while they do, so the highest frame can be a second late. Finish is when
+  // the follow-through has died down: the first frame after its fastest
+  // moment where the hands are nearly still (as for address).
+  final finishPeak = climb(impact, 1, higher: true);
+  var throughPeak = impact;
+  for (var i = impact; i <= finishPeak; i++) {
+    if (speed[i] > speed[throughPeak]) throughPeak = i;
+  }
+  var finish = throughPeak;
+  while (finish < finishPeak && speed[finish] > speed[throughPeak] * 0.12) {
+    finish++;
   }
 
-  if (rise < scale * 0.5 || !(address < top && top < impact && impact <= finish)) {
+  // Address: the start of the takeaway. Golfers settle, shuffle and waggle
+  // before swinging, with the hands drifting slowly for seconds, so "the
+  // lowest point" or "before the hands moved a few pixels" lands far too
+  // early. Instead, walk back from the fastest moment of the backswing to
+  // where the hands were nearly still, relative to that speed (so slow-mo
+  // clips work the same as real-time ones).
+  final low = climb(top, -1, higher: false);
+  final rise = hands[low].dy - hands[top].dy;
+  var backswingPeak = low;
+  for (var i = low; i < top; i++) {
+    if (speed[i] > speed[backswingPeak]) backswingPeak = i;
+  }
+  // Face-on, the takeaway starts sideways, so the lowest hand point can come
+  // after it has begun. Let the walk go back past it, but not as far as the
+  // hands being up high (a previous swing's finish).
+  var floor = low;
+  while (floor > 0 && hands[floor - 1].dy > hands[top].dy + rise * 0.5) {
+    floor--;
+  }
+  final stillSpeed = speed[backswingPeak] * 0.12;
+  var address = backswingPeak;
+  while (address > floor && speed[address] > stillSpeed) {
+    address--;
+  }
+  // The clubhead leads the takeaway, so the hands often creep for a few
+  // tenths of a second before they visibly move. Keep walking back while the
+  // hands were moving in the previous 0.3s (beyond a small radius, so
+  // detector jitter doesn't count) and the shoulders were turning with them.
+  // Hands moving on their own, shoulders still, is a forward press or a
+  // fidget at address, not the swing, so the walk stops there.
+  final stillRadius = math.max(scale * 0.03, rise * 0.04);
+  final shoulderLine = [
+    for (final f in frames) f.at(L.leftShoulder) - f.at(L.rightShoulder),
+  ];
+  bool movedBefore(int i, List<Offset> track, double radius) {
+    for (
+      var k = i - 1;
+      k >= 0 && frames[i].timeMs - frames[k].timeMs <= 300;
+      k--
+    ) {
+      if ((track[k] - track[i]).distance > radius) return true;
+    }
+    return false;
+  }
+
+  while (address > floor &&
+      movedBefore(address, hands, stillRadius) &&
+      movedBefore(address, shoulderLine, scale * 0.04)) {
+    address--;
+  }
+
+  if (rise < scale * 0.5 ||
+      !(address < top && top < impact && impact <= finish)) {
     return null;
   }
   return KeyFrames(address: address, top: top, impact: impact, finish: finish);
+}
+
+/// Which way the camera was pointing, judged from the golfer at address, or
+/// null when it isn't clear. Face-on, the shoulders look wide and the hands
+/// hang in front of the belt buckle. From the side (down-the-line, or from
+/// the target side), the shoulders overlap and the hands are out in front of
+/// the hips.
+CameraView? detectCameraView(List<PoseFrame> frames, int address) {
+  final width = <double>[], handOut = <double>[];
+  for (var i = math.max(0, address - 6); i <= address; i++) {
+    final f = frames[i];
+    final torso = torsoLength(f);
+    if (torso <= 0) continue;
+    width.add((f.at(L.leftShoulder) - f.at(L.rightShoulder)).distance / torso);
+    handOut.add((handPos(f).dx - midHip(f).dx).abs() / torso);
+  }
+  if (width.isEmpty) return null;
+  final w = _median(width), h = _median(handOut);
+  if (w >= 0.55 && h < 0.3) return CameraView.faceOn;
+  if (w <= 0.45 && h >= 0.35) return CameraView.downTheLine;
+  return null;
 }
 
 /// Sub-frame time of the hand-height extreme at frame [i], found by fitting a
@@ -277,8 +386,11 @@ double _rad2deg(double r) => r * 180 / math.pi;
 /// [impactMs], when known from the strike sound, is used for tempo instead of
 /// the hand-based estimate.
 List<Metric> computeMetrics(
-    List<PoseFrame> frames, KeyFrames keys, SwingSettings settings,
-    {int? impactMs}) {
+  List<PoseFrame> frames,
+  KeyFrames keys,
+  SwingSettings settings, {
+  int? impactMs,
+}) {
   final address = frames[keys.address];
   final top = frames[keys.top];
   final impact = frames[keys.impact];
@@ -296,100 +408,117 @@ List<Metric> computeMetrics(
 
   // Tempo: backswing time vs downswing time. Tour average is about 3:1.
   final back = peakTimeMs(frames, keys.top) - address.timeMs;
-  final down = (impactMs ?? peakTimeMs(frames, keys.impact)) -
+  final down =
+      (impactMs ?? peakTimeMs(frames, keys.impact)) -
       peakTimeMs(frames, keys.top);
   if (back > 0 && down > 0) {
-    metrics.add(Metric(
-      id: 'tempo',
-      name: 'Tempo (backswing : downswing)',
-      value: back / down,
-      unit: ':1',
-      idealMin: 2.5,
-      idealMax: 3.5,
-      tolerance: 1.0,
-      phase: SwingPhase.top,
-      description:
-          'How long your backswing takes compared to your downswing. Good players are close to 3:1.',
-      tipLow:
-          'Your backswing is rushed. Take the club back slower and let it fully load at the top before starting down. Try counting "one-two-three" back and "one" down.',
-      tipHigh:
-          'Your downswing is slow relative to your backswing. Keep the backswing smooth but commit and accelerate through the ball.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'tempo',
+        name: 'Tempo (backswing : downswing)',
+        value: back / down,
+        unit: ':1',
+        idealMin: 2.5,
+        idealMax: 3.5,
+        tolerance: 1.0,
+        phase: SwingPhase.top,
+        description: 'How long your backswing takes compared to your downswing. Good players are close to 3:1.',
+        tipLow: 'Your backswing is rushed. Take the club back slower and let it fully load at the top before starting down. Try counting "one-two-three" back and "one" down.',
+        tipHigh: 'Your downswing is slow relative to your backswing. Keep the backswing smooth but commit and accelerate through the ball.',
+      ),
+    );
   }
 
-  // Lead arm at the top: should be close to straight.
-  metrics.add(Metric(
-    id: 'lead_arm',
-    name: 'Lead arm at the top',
-    value: jointAngle(top.at(leadShoulder), top.at(leadElbow), top.at(leadWrist)),
-    unit: '°',
-    // Face-on, the arm points partly at the camera at the top, so it reads
-    // more bent than it is.
-    idealMin: settings.view == CameraView.faceOn ? 140 : 155,
-    idealMax: 180,
-    tolerance: 25,
-    phase: SwingPhase.top,
-    description:
-        'Elbow angle of your lead arm at the top of the backswing. 180° is perfectly straight.',
-    tipLow:
-        'Your lead arm is collapsing at the top. Keep it extended (not locked) to maintain width. Feel like you push your hands away from your chest on the way back.',
-    tipHigh: '',
-  ));
+  // Lead arm at the top: should be close to straight. Filmed from the target
+  // side, the lead arm is hidden behind the head at the top and the detector
+  // guesses the elbow; nobody reaches the top with the arm folded past 90°,
+  // so a reading that low means we couldn't see it, and it's left out rather
+  // than reported as a fault.
+  final leadArm = jointAngle(
+    top.at(leadShoulder),
+    top.at(leadElbow),
+    top.at(leadWrist),
+  );
+  if (leadArm >= 90) {
+    metrics.add(
+      Metric(
+        id: 'lead_arm',
+        name: 'Lead arm at the top',
+        value: leadArm,
+        unit: '°',
+        // Face-on, the arm points partly at the camera at the top, so it reads
+        // more bent than it is.
+        idealMin: settings.view == CameraView.faceOn ? 140 : 155,
+        idealMax: 180,
+        tolerance: 25,
+        phase: SwingPhase.top,
+        description: 'Elbow angle of your lead arm at the top of the backswing. 180° is perfectly straight.',
+        tipLow: 'Your lead arm is collapsing at the top. Keep it extended (not locked) to maintain width. Feel like you push your hands away from your chest on the way back.',
+        tipHigh: '',
+      ),
+    );
+  }
 
   // Head movement from address to impact, in torso lengths.
   final headShift = impact.at(L.nose) - address.at(L.nose);
-  metrics.add(Metric(
-    id: 'head_sway',
-    name: 'Head side-to-side movement',
-    value: headShift.dx.abs() / scale,
-    unit: '×torso',
-    idealMin: 0,
-    idealMax: 0.2,
-    tolerance: 0.3,
-    phase: SwingPhase.impact,
-    description:
-        'How far your head moved sideways between address and impact.',
-    tipLow: '',
-    tipHigh:
-        'Your head is drifting during the swing. Pick a spot on the back of the ball and keep your head over it until after impact.',
-  ));
-  metrics.add(Metric(
-    id: 'head_height',
-    name: 'Head up/down movement',
-    value: headShift.dy.abs() / scale,
-    unit: '×torso',
-    idealMin: 0,
-    idealMax: 0.12,
-    tolerance: 0.2,
-    phase: SwingPhase.impact,
-    description: 'How much your head rose or dipped between address and impact.',
-    tipLow: '',
-    tipHigh: headShift.dy < 0
-        ? 'Your head is rising before impact, which usually means you\'re standing up. Keep your chest down and maintain your knee flex through the ball.'
-        : 'Your head is dipping toward the ball. Stay tall through the backswing and avoid squatting into the downswing.',
-  ));
+  metrics.add(
+    Metric(
+      id: 'head_sway',
+      name: 'Head side-to-side movement',
+      value: headShift.dx.abs() / scale,
+      unit: '×torso',
+      idealMin: 0,
+      idealMax: 0.2,
+      tolerance: 0.3,
+      phase: SwingPhase.impact,
+      description:
+          'How far your head moved sideways between address and impact.',
+      tipLow: '',
+      tipHigh: 'Your head is drifting during the swing. Pick a spot on the back of the ball and keep your head over it until after impact.',
+    ),
+  );
+  metrics.add(
+    Metric(
+      id: 'head_height',
+      name: 'Head up/down movement',
+      value: headShift.dy.abs() / scale,
+      unit: '×torso',
+      idealMin: 0,
+      idealMax: 0.12,
+      tolerance: 0.2,
+      phase: SwingPhase.impact,
+      description:
+          'How much your head rose or dipped between address and impact.',
+      tipLow: '',
+      tipHigh: headShift.dy < 0
+          ? 'Your head is rising before impact, which usually means you\'re standing up. Keep your chest down and maintain your knee flex through the ball.'
+          : 'Your head is dipping toward the ball. Stay tall through the backswing and avoid squatting into the downswing.',
+    ),
+  );
 
   if (settings.view == CameraView.faceOn) {
     // Image x-direction that points toward the target (lead side).
-    final toTarget = (address.at(leadShoulder).dx - address.at(lead ? L.rightShoulder : L.leftShoulder).dx).sign;
+    final toTarget =
+        (address.at(leadShoulder).dx -
+                address.at(lead ? L.rightShoulder : L.leftShoulder).dx)
+            .sign;
     final toTrail = -toTarget;
 
-    metrics.add(Metric(
-      id: 'hip_sway',
-      name: 'Hip sway on backswing',
-      value: (midHip(top).dx - midHip(address).dx) * toTrail / scale,
-      unit: '×torso',
-      idealMin: -0.05,
-      idealMax: 0.15,
-      tolerance: 0.25,
-      phase: SwingPhase.top,
-      description:
-          'How far your hips slid away from the target on the backswing. You want to turn, not slide.',
-      tipLow:
-          'Your hips are moving toward the target on the backswing (a reverse pivot). Feel your weight load into your trail heel as you turn.',
-      tipHigh:
-          'Your hips are swaying away from the target instead of rotating. Feel your trail hip turn behind you while keeping pressure on the inside of your trail foot.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'hip_sway',
+        name: 'Hip sway on backswing',
+        value: (midHip(top).dx - midHip(address).dx) * toTrail / scale,
+        unit: '×torso',
+        idealMin: -0.05,
+        idealMax: 0.15,
+        tolerance: 0.25,
+        phase: SwingPhase.top,
+        description: 'How far your hips slid away from the target on the backswing. You want to turn, not slide.',
+        tipLow: 'Your hips are moving toward the target on the backswing (a reverse pivot). Feel your weight load into your trail heel as you turn.',
+        tipHigh: 'Your hips are swaying away from the target instead of rotating. Feel your trail hip turn behind you while keeping pressure on the inside of your trail foot.',
+      ),
+    );
 
     double turn(L a, L b, PoseFrame f0, PoseFrame f1) {
       final w0 = (f0.at(a) - f0.at(b)).distance;
@@ -397,130 +526,136 @@ List<Metric> computeMetrics(
       return _rad2deg(math.acos((w1 / w0).clamp(0.0, 1.0)));
     }
 
-    metrics.add(Metric(
-      id: 'shoulder_turn',
-      name: 'Shoulder turn (estimated)',
-      value: turn(L.leftShoulder, L.rightShoulder, address, top),
-      unit: '°',
-      idealMin: 75,
-      idealMax: 110,
-      tolerance: 30,
-      phase: SwingPhase.top,
-      description:
-          'Estimated shoulder rotation at the top, based on how much narrower your shoulders look to the camera.',
-      tipLow:
-          'You\'re not turning your shoulders enough. Try to get your lead shoulder under your chin and your back facing the target at the top.',
-      tipHigh: '',
-    ));
-    metrics.add(Metric(
-      id: 'hip_turn',
-      name: 'Hip turn (estimated)',
-      value: turn(L.leftHip, L.rightHip, address, top),
-      unit: '°',
-      idealMin: 30,
-      idealMax: 55,
-      tolerance: 20,
-      phase: SwingPhase.top,
-      description:
-          'Estimated hip rotation at the top. Hips should turn about half as much as the shoulders.',
-      tipLow:
-          'Your hips are too restricted. Let your trail hip turn back freely; this makes a full shoulder turn much easier.',
-      tipHigh:
-          'Your hips are over-rotating, which loses the stretch between hips and shoulders. Keep your trail knee flexed to resist a bit.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'shoulder_turn',
+        name: 'Shoulder turn (estimated)',
+        value: turn(L.leftShoulder, L.rightShoulder, address, top),
+        unit: '°',
+        idealMin: 75,
+        idealMax: 110,
+        tolerance: 30,
+        phase: SwingPhase.top,
+        description: 'Estimated shoulder rotation at the top, based on how much narrower your shoulders look to the camera.',
+        tipLow: 'You\'re not turning your shoulders enough. Try to get your lead shoulder under your chin and your back facing the target at the top.',
+        tipHigh: '',
+      ),
+    );
+    metrics.add(
+      Metric(
+        id: 'hip_turn',
+        name: 'Hip turn (estimated)',
+        value: turn(L.leftHip, L.rightHip, address, top),
+        unit: '°',
+        idealMin: 30,
+        idealMax: 55,
+        tolerance: 20,
+        phase: SwingPhase.top,
+        description: 'Estimated hip rotation at the top. Hips should turn about half as much as the shoulders.',
+        tipLow: 'Your hips are too restricted. Let your trail hip turn back freely; this makes a full shoulder turn much easier.',
+        tipHigh: 'Your hips are over-rotating, which loses the stretch between hips and shoulders. Keep your trail knee flexed to resist a bit.',
+      ),
+    );
 
     // Where the hips finish between the feet: 0 = trail ankle, 1 = lead ankle.
     final ta = finish.at(trailAnkle).dx, la = finish.at(leadAnkle).dx;
     if ((la - ta).abs() > scale * 0.1) {
-      metrics.add(Metric(
-        id: 'weight_shift',
-        name: 'Weight shift at finish',
-        value: (midHip(finish).dx - ta) / (la - ta),
-        unit: '',
-        idealMin: 0.7,
-        idealMax: 1.25,
-        tolerance: 0.4,
-        phase: SwingPhase.finish,
-        description:
-            'Where your hips end up between your feet at the finish (0 = over the trail foot, 1 = over the lead foot).',
-        tipLow:
-            'You\'re hanging back on your trail side. Finish with your belt buckle facing the target and nearly all your weight on your lead foot, trail toe just touching.',
-        tipHigh:
-            'Your hips are sliding past your lead foot. Rotate around your lead leg instead of pushing laterally.',
-      ));
+      metrics.add(
+        Metric(
+          id: 'weight_shift',
+          name: 'Weight shift at finish',
+          value: (midHip(finish).dx - ta) / (la - ta),
+          unit: '',
+          idealMin: 0.7,
+          idealMax: 1.25,
+          tolerance: 0.4,
+          phase: SwingPhase.finish,
+          description: 'Where your hips end up between your feet at the finish (0 = over the trail foot, 1 = over the lead foot).',
+          tipLow: 'You\'re hanging back on your trail side. Finish with your belt buckle facing the target and nearly all your weight on your lead foot, trail toe just touching.',
+          tipHigh: 'Your hips are sliding past your lead foot. Rotate around your lead leg instead of pushing laterally.',
+        ),
+      );
     }
   } else {
     // Down-the-line: posture and early extension.
     final addressLean = spineLean(address);
-    metrics.add(Metric(
-      id: 'posture',
-      name: 'Spine tilt at address',
-      value: addressLean,
-      unit: '°',
-      idealMin: 30,
-      idealMax: 50,
-      tolerance: 12,
-      phase: SwingPhase.address,
-      description: 'How far you bend forward from the hips at setup.',
-      tipLow:
-          'You\'re standing too upright at address. Hinge more from the hips (push your butt back) and let your arms hang under your shoulders.',
-      tipHigh:
-          'You\'re bent over too much at address. Stand a bit taller with your chest up, still hinged from the hips.',
-    ));
-    metrics.add(Metric(
-      id: 'posture_loss',
-      name: 'Spine angle lost at impact',
-      value: addressLean - spineLean(impact),
-      unit: '°',
-      idealMin: -5,
-      idealMax: 8,
-      tolerance: 12,
-      phase: SwingPhase.impact,
-      description:
-          'How much your forward bend changed from address to impact. Good players keep it nearly the same.',
-      tipLow:
-          'You\'re bending further over into impact. Stay in your posture and rotate your chest through rather than diving down.',
-      tipHigh:
-          'You\'re standing up through impact (losing your spine angle). Keep your chest over the ball and feel your hips turn instead of thrusting up.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'posture',
+        name: 'Spine tilt at address',
+        value: addressLean,
+        unit: '°',
+        idealMin: 30,
+        idealMax: 50,
+        tolerance: 12,
+        phase: SwingPhase.address,
+        description: 'How far you bend forward from the hips at setup.',
+        tipLow: 'You\'re standing too upright at address. Hinge more from the hips (push your butt back) and let your arms hang under your shoulders.',
+        tipHigh: 'You\'re bent over too much at address. Stand a bit taller with your chest up, still hinged from the hips.',
+      ),
+    );
+    metrics.add(
+      Metric(
+        id: 'posture_loss',
+        name: 'Spine angle lost at impact',
+        value: addressLean - spineLean(impact),
+        unit: '°',
+        idealMin: -5,
+        idealMax: 8,
+        tolerance: 12,
+        phase: SwingPhase.impact,
+        description: 'How much your forward bend changed from address to impact. Good players keep it nearly the same.',
+        tipLow: 'You\'re bending further over into impact. Stay in your posture and rotate your chest through rather than diving down.',
+        tipHigh: 'You\'re standing up through impact (losing your spine angle). Keep your chest over the ball and feel your hips turn instead of thrusting up.',
+      ),
+    );
 
     // Golfer faces the ball; nose sits ahead of the hips toward it.
     final toBall = (address.at(L.nose).dx - midHip(address).dx).sign;
-    metrics.add(Metric(
-      id: 'early_extension',
-      name: 'Hips toward the ball (early extension)',
-      value: (midHip(impact).dx - midHip(address).dx) * toBall / scale,
-      unit: '×torso',
-      idealMin: -0.15,
-      idealMax: 0.1,
-      tolerance: 0.2,
-      phase: SwingPhase.impact,
-      description:
-          'How far your hips moved toward the ball between address and impact.',
-      tipLow:
-          'Your hips are backing away from the ball through impact. Feel your lead hip rotate open while your weight stays centered over your feet.',
-      tipHigh:
-          'Your hips are thrusting toward the ball (early extension), which crowds your arms. Feel your backside stay on an imaginary wall behind you through impact.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'early_extension',
+        name: 'Hips toward the ball (early extension)',
+        value: (midHip(impact).dx - midHip(address).dx) * toBall / scale,
+        unit: '×torso',
+        idealMin: -0.15,
+        idealMax: 0.1,
+        tolerance: 0.2,
+        phase: SwingPhase.impact,
+        description: 'How far your hips moved toward the ball between address and impact.',
+        tipLow: 'Your hips are backing away from the ball through impact. Feel your lead hip rotate open while your weight stays centered over your feet.',
+        tipHigh: 'Your hips are thrusting toward the ball (early extension), which crowds your arms. Feel your backside stay on an imaginary wall behind you through impact.',
+      ),
+    );
 
-    final knee = (jointAngle(address.at(L.leftHip), address.at(L.leftKnee), address.at(L.leftAnkle)) +
-            jointAngle(address.at(L.rightHip), address.at(L.rightKnee), address.at(L.rightAnkle))) /
+    final knee =
+        (jointAngle(
+              address.at(L.leftHip),
+              address.at(L.leftKnee),
+              address.at(L.leftAnkle),
+            ) +
+            jointAngle(
+              address.at(L.rightHip),
+              address.at(L.rightKnee),
+              address.at(L.rightAnkle),
+            )) /
         2;
-    metrics.add(Metric(
-      id: 'knee_flex',
-      name: 'Knee flex at address',
-      value: knee,
-      unit: '°',
-      idealMin: 145,
-      idealMax: 170,
-      tolerance: 15,
-      phase: SwingPhase.address,
-      description: 'Angle at your knees during setup. 180° is fully straight.',
-      tipLow:
-          'You\'re squatting too much at address. Soften your knees just slightly; the bend should come mostly from your hips.',
-      tipHigh:
-          'Your legs are too straight at address. Add a slight knee flex so you can turn and stay athletic.',
-    ));
+    metrics.add(
+      Metric(
+        id: 'knee_flex',
+        name: 'Knee flex at address',
+        value: knee,
+        unit: '°',
+        idealMin: 145,
+        idealMax: 170,
+        tolerance: 15,
+        phase: SwingPhase.address,
+        description:
+            'Angle at your knees during setup. 180° is fully straight.',
+        tipLow: 'You\'re squatting too much at address. Soften your knees just slightly; the bend should come mostly from your hips.',
+        tipHigh: 'Your legs are too straight at address. Add a slight knee flex so you can turn and stay athletic.',
+      ),
+    );
   }
 
   return metrics;

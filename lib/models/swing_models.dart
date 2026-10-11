@@ -174,6 +174,10 @@ class SwingAnalysis {
   /// video has no clear strike sound and impact was estimated from the hands.
   final int? impactSoundMs;
 
+  /// Something the user should know about how the video was read, such as
+  /// the camera angle being corrected.
+  final String? notice;
+
   const SwingAnalysis({
     required this.videoPath,
     required this.settings,
@@ -183,6 +187,7 @@ class SwingAnalysis {
     required this.metrics,
     this.error,
     this.impactSoundMs,
+    this.notice,
   });
 
   /// Metrics outside their ideal range, worst first.

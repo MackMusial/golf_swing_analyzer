@@ -142,6 +142,21 @@ void main() {
     }
   });
 
+  test('poseAt blends between analyzed frames for smooth playback', () {
+    final a = SwingAnalysis(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      frames: [fakeFrame(0, handHeight: 600), fakeFrame(100, handHeight: 500)],
+      totalFramesSampled: 2,
+      keyFrames: null,
+      metrics: const [],
+    );
+    const wrist = PoseLandmarkType.leftWrist;
+    expect(a.poseAt(25)!.at(wrist).dy, closeTo(575, 0.01));
+    expect(a.poseAt(50)!.at(wrist).dy, closeTo(550, 0.01));
+    expect(a.poseAt(100)!.at(wrist).dy, 500);
+  });
+
   test('reports an error when no swing happens', () {
     final still = [for (var ms = 0; ms < 2000; ms += 33) fakeFrame(0)]
         .indexed

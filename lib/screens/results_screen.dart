@@ -42,13 +42,17 @@ class _ResultsScreenState extends State<ResultsScreen>
       _video.setPlaybackSpeed(_speed);
       setState(() => _ready = true);
     });
-    _ticker = createTicker((_) {
-      if (_video.value.isPlaying) setState(() {});
-    })
-      ..start();
+    _ticker = createTicker((_) => setState(() {}));
   }
 
   void _onVideoChanged() {
+    // Repaint every screen frame only while playing; idle otherwise.
+    final playing = _video.value.isPlaying;
+    if (playing && !_ticker.isActive) {
+      _ticker.start();
+    } else if (!playing && _ticker.isActive) {
+      _ticker.stop();
+    }
     if (_video.value.position != _lastPosition) {
       _lastPosition = _video.value.position;
       _sinceLastPosition
@@ -126,6 +130,7 @@ class _ResultsScreenState extends State<ResultsScreen>
             ),
           const SizedBox(height: 12),
           if (a.error != null) _errorCard(theme) else ...[
+            if (a.notice != null) _noticeCard(theme),
             _scoreCard(theme),
             _issues(theme),
             _keyframeGallery(theme),
@@ -234,6 +239,18 @@ class _ResultsScreenState extends State<ResultsScreen>
             Icon(Icons.info_outline, color: theme.colorScheme.error),
             const SizedBox(width: 12),
             Expanded(child: Text(a.error!)),
+          ]),
+        ),
+      );
+
+  Widget _noticeCard(ThemeData theme) => Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Icon(Icons.videocam_outlined, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(child: Text(a.notice!)),
           ]),
         ),
       );

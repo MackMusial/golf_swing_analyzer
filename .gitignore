@@ -49,3 +49,7 @@ app.*.map.json
 
 # Windows setup script log
 setup.log
+
+# Updater bookkeeping
+.installed_version
+/android/build/
