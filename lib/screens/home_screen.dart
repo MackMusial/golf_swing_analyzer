@@ -14,7 +14,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _picker = ImagePicker();
   var _handedness = Handedness.right;
-  var _view = CameraView.faceOn;
 
   Future<void> _getVideo(ImageSource source) async {
     final XFile? video;
@@ -33,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AnalyzingScreen(
         videoPath: video!.path,
-        settings: SwingSettings(handedness: _handedness, view: _view),
+        settings: SwingSettings(handedness: _handedness),
       ),
     ));
   }
@@ -67,24 +66,6 @@ class _HomeScreenState extends State<HomeScreen> {
               selected: {_handedness},
               onSelectionChanged: (s) => setState(() => _handedness = s.first),
             ),
-            const SizedBox(height: 20),
-            Text('Camera angle', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SegmentedButton<CameraView>(
-              segments: [
-                for (final v in CameraView.values)
-                  ButtonSegment(value: v, label: Text(v.label)),
-              ],
-              selected: {_view},
-              onSelectionChanged: (s) => setState(() => _view = s.first),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _view == CameraView.faceOn
-                  ? 'Phone straight in front of you, facing your chest. Best for sway, turn and weight shift.'
-                  : 'Phone behind you, looking down your target line. Best for posture and early extension.',
-              style: theme.textTheme.bodySmall,
-            ),
             const SizedBox(height: 28),
             FilledButton.icon(
               onPressed: () => _getVideo(ImageSource.camera),
@@ -113,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text('Tips for a good read', style: theme.textTheme.titleSmall),
                     const SizedBox(height: 8),
                     for (final tip in const [
+                      'Film from straight in front of you (face-on) or from behind, down your target line. The app works out which.',
                       'Prop the phone up at about waist height; don\'t hand-hold it.',
                       'Get your whole body in frame, head to feet, with some room above.',
                       'One swing per video, 3–6 seconds long works best.',

@@ -13,7 +13,7 @@ A phone app that tracks your joints in a golf swing video and critiques the swin
 
 **Getting new versions:** double-click **`Update.bat`**. It checks GitHub, downloads the latest version over your folder (keeping build files so the next build is quick), shows what's new, and offers to start the app. If you're already up to date, it says so. You don't need to run Setup.bat again.
 
-**Sample videos:** Run.bat puts seven sample swings in the emulator's photo library, each a different golfer (junior, senior, men and women; face-on, down-the-line, from behind, hand-held), so you can try the app right away. In the app, tap **Upload from library** and pick one. If the camera angle you chose doesn't match the video, the app notices and switches. See [samples/README.md](samples/README.md).
+**Sample videos:** Run.bat puts seven sample swings in the emulator's photo library, each a different golfer (junior, senior, men and women; face-on, down-the-line, from behind, hand-held), so you can try the app right away. In the app, tap **Upload from library** and pick one. The app works out the camera angle by itself. See [samples/README.md](samples/README.md).
 
 **To add your own swing video to the emulator:** with the emulator running, double-click **`AddVideo.bat`** and pick the video, or drag video files onto AddVideo.bat. Then in the app tap **Upload from library**.
 - Videos from an iPhone can be HEVC, which the emulator may not decode well. Filming with iPhone Settings → Camera → Formats → **Most Compatible** avoids that.

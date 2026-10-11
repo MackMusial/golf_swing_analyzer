@@ -13,18 +13,18 @@ import 'package:path_provider/path_provider.dart';
 
 /// Runs the real pipeline (native frame extraction + ML Kit + analyzer) on a
 /// freely licensed swing video from Wikimedia Commons (phone-style portrait, slow motion).
-/// Override with --dart-define=VIDEO_URL=... and VIEW=dtl to test other clips.
+/// Override with --dart-define=VIDEO_URL=... to test other clips. The camera
+/// angle is detected from the video.
 const _videoUrl = String.fromEnvironment('VIDEO_URL',
     defaultValue:
         'https://upload.wikimedia.org/wikipedia/commons/9/9e/Suvichaya_Vinijchaitham_Golf_Swing_Slow_Mo_2026.webm');
-const _view = String.fromEnvironment('VIEW', defaultValue: 'faceOn');
 
-/// Batch mode: `--dart-define=VIDEOS=url1~dtl,url2~faceOn,...` analyzes each
+/// Batch mode: `--dart-define=VIDEOS=url1,url2,...` analyzes each
 /// clip in one app install (much faster than one `flutter test` per clip) and
 /// prints `RESULT` lines prefixed with `CLIP n`. No screens are shown.
 const _videos = String.fromEnvironment('VIDEOS');
 
-Future<SwingAnalysis> _analyze(WidgetTester tester, String url, String view) async {
+Future<SwingAnalysis> _analyze(WidgetTester tester, String url) async {
   final dir = await getApplicationSupportDirectory();
   final video = File('${dir.path}/test_swing.${url.split('.').last}');
   await tester.runAsync(() async {
@@ -37,9 +37,7 @@ Future<SwingAnalysis> _analyze(WidgetTester tester, String url, String view) asy
   await tester.runAsync(() async {
     analysis = await SwingProcessor().process(
       video.path,
-      SwingSettings(
-        view: view == 'dtl' ? CameraView.downTheLine : CameraView.faceOn,
-      ),
+      const SwingSettings(),
       onProgress: (p, m) => debugPrint('PROGRESS $m'),
     );
   });
@@ -84,9 +82,10 @@ void main() {
     testWidgets('analyzes a batch of real swing videos', (tester) async {
       final clips = _videos.split(',');
       for (var i = 0; i < clips.length; i++) {
-        final [url, view] = clips[i].split('~');
+        // Older commands added `~view` to each URL; the angle is detected now.
+        final url = clips[i].split('~').first;
         debugPrint('CLIP $i $url');
-        _printResults(await _analyze(tester, url, view), 'CLIP $i ');
+        _printResults(await _analyze(tester, url), 'CLIP $i ');
       }
       debugPrint('BATCH DONE ${clips.length} clips');
     }, timeout: const Timeout(Duration(hours: 3)));
@@ -94,7 +93,7 @@ void main() {
   }
 
   testWidgets('analyzes a real swing video', (tester) async {
-    final analysis = await _analyze(tester, _videoUrl, _view);
+    final analysis = await _analyze(tester, _videoUrl);
 
     _printResults(analysis);
     final keys = analysis.keyFrames;

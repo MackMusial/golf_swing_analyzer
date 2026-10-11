@@ -15,6 +15,8 @@ extension CameraViewLabel on CameraView {
 
 class SwingSettings {
   final Handedness handedness;
+
+  /// Detected from the video by the analyzer, not chosen by the user.
   final CameraView view;
 
   const SwingSettings({

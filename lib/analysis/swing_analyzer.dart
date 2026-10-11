@@ -74,17 +74,15 @@ SwingAnalysis analyzeSwing({
   }
   final usedSound = soundUsable ? sound : null;
 
-  // People often pick the wrong camera angle, and every angle-specific metric
-  // is then nonsense. When the video clearly shows the other angle, use it.
-  var used = settings;
-  String? notice;
+  // The camera angle decides which metrics make sense, and people often get
+  // it wrong, so it's read from the video rather than asked for.
   final seen = detectCameraView(frames, keys.address);
-  if (seen != null && seen != settings.view) {
-    used = SwingSettings(handedness: settings.handedness, view: seen);
-    notice =
-        'You picked ${settings.view.label}, but this video looks '
-        '${seen.label.toLowerCase()}, so it was analyzed as ${seen.label}.';
-  }
+  final used = SwingSettings(handedness: settings.handedness, view: seen.view);
+  final notice = seen.clear
+      ? null
+      : 'The camera was at an angle, so this was analyzed as ${seen.view.label}, '
+            'the closest match. For the most accurate read, film from straight '
+            'in front of you (face-on) or from behind, down your target line.';
   return result(
     frames,
     keys,
@@ -331,12 +329,13 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   return KeyFrames(address: address, top: top, impact: impact, finish: finish);
 }
 
-/// Which way the camera was pointing, judged from the golfer at address, or
-/// null when it isn't clear. Face-on, the shoulders look wide and the hands
-/// hang in front of the belt buckle. From the side (down-the-line, or from
-/// the target side), the shoulders overlap and the hands are out in front of
-/// the hips.
-CameraView? detectCameraView(List<PoseFrame> frames, int address) {
+/// Which way the camera was pointing, judged from the golfer at address.
+/// Face-on, the shoulders look wide and the hands hang in front of the belt
+/// buckle. From the side (down-the-line, from the target side or from
+/// behind), the shoulders overlap and the hands are out in front of the hips.
+/// [clear] is false for in-between angles, where [view] is the closer one.
+({CameraView view, bool clear}) detectCameraView(
+    List<PoseFrame> frames, int address) {
   final width = <double>[], handOut = <double>[];
   for (var i = math.max(0, address - 6); i <= address; i++) {
     final f = frames[i];
@@ -345,11 +344,15 @@ CameraView? detectCameraView(List<PoseFrame> frames, int address) {
     width.add((f.at(L.leftShoulder) - f.at(L.rightShoulder)).distance / torso);
     handOut.add((handPos(f).dx - midHip(f).dx).abs() / torso);
   }
-  if (width.isEmpty) return null;
+  if (width.isEmpty) return (view: CameraView.faceOn, clear: false);
   final w = _median(width), h = _median(handOut);
-  if (w >= 0.55 && h < 0.3) return CameraView.faceOn;
-  if (w <= 0.45 && h >= 0.35) return CameraView.downTheLine;
-  return null;
+  if (w >= 0.55 && h < 0.3) return (view: CameraView.faceOn, clear: true);
+  if (w <= 0.45 && h >= 0.35) return (view: CameraView.downTheLine, clear: true);
+  // In between: wide shoulders and centred hands lean face-on.
+  return (
+    view: w - h > 0.25 ? CameraView.faceOn : CameraView.downTheLine,
+    clear: false,
+  );
 }
 
 /// Sub-frame time of the hand-height extreme at frame [i], found by fitting a

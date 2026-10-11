@@ -5,7 +5,7 @@ Flutter app (iOS + Android): record or upload a swing video, track the golfer's 
 Original plan doc (Python-based, superseded by this Flutter build): https://claude.ai/artifact/3VfZRMsYMn6XgV438G99C2
 
 ## Pipeline
-1. **Pick/record**: `image_picker` (`lib/screens/home_screen.dart`). The user picks handedness and camera view (face-on or down-the-line).
+1. **Pick/record**: `image_picker` (`lib/screens/home_screen.dart`). The user picks handedness. The camera angle is detected, not asked (people got it wrong, and it decides which metrics apply).
 2. **Frame extraction**: our own platform channel `golf_swing_analyzer/frames` with `probe` and `extractFrames`.
    - Android: `android/app/src/main/kotlin/.../MainActivity.kt` (MediaMetadataRetriever, `OPTION_CLOSEST`).
    - iOS: `FrameExtractor` in `ios/Runner/AppDelegate.swift` (AVAssetImageGenerator, zero tolerance).
@@ -23,7 +23,7 @@ Original plan doc (Python-based, superseded by this Flutter build): https://clau
    - Find address/top/impact/finish from the hand path, searching outward from the fastest hand movement (measured across ±2 frames so one glitch can't win) so it stays within one swing.
      - Address = start of the takeaway: walk back from the fastest backswing moment until the hands are nearly still (12% of that speed, so slow-mo works too), then back through any slow creep while the shoulders turn with the hands. Hands moving with the shoulders still is a forward press or fidget and stops the walk. Golfers settle and waggle for seconds, so "lowest hand point" lands far too early.
      - Finish = first nearly-still frame after the fastest follow-through moment. Golfers hold the finish while the hands keep drifting up, so the highest point is late.
-   - `detectCameraView` checks the angle at address (face-on: shoulders wide, ≥0.55 of torso, hands in front of the belt; side: shoulders overlap, ≤0.45, hands out in front of the hips). If it clearly disagrees with the user's pick, the analysis uses the detected angle and `SwingAnalysis.notice` says so. Side views from the target side or from behind count as down-the-line.
+   - `detectCameraView` checks the angle at address (face-on: shoulders wide, ≥0.55 of torso, hands in front of the belt; side: shoulders overlap, ≤0.45, hands out in front of the hips). In-between angles use the closer one, and `SwingAnalysis.notice` says the angle was unclear. Side views from the target side or from behind count as down-the-line.
    - Compute metrics and compare them to ideal ranges (`Metric` in `lib/models/swing_models.dart`). A lead arm under 90° at the top means the arm was hidden and the detector guessed, so that metric is skipped.
 5. **Results** (`lib/screens/results_screen.dart`): video with skeleton overlay, keyframe jump chips, score, top-3 fixes, key-position thumbnails, all metrics. Speeds 0.25x–3x from a menu.
    - When paused, it shows the exact analyzed frame so the skeleton lines up.
@@ -45,8 +45,8 @@ Flutter SDK lives at `C:\Users\mackm\dev\flutter` (on the user PATH).
 - `flutter test`: unit tests for the analyzer.
   - `test/swing_analyzer_test.dart` uses synthetic swings.
   - `test/real_swings_test.dart` replays 13 real swings recorded from the device (`test/fixtures/swings/*.txt`), checks hand-labelled windows for each key moment with and without added jitter, checks camera-angle detection, and that a chip-shot clip is rejected. When a real video goes wrong, add it here first: run it on the device, `sh tool/trace_to_fixture.sh run.log [clip#] > test/fixtures/swings/name.txt`, label it by looking at frames (ffmpeg), then fix the code until everything passes. Don't tune thresholds to one clip.
-- `flutter test integration_test/pipeline_test.dart -d emulator-5554 --dart-define=VIDEO_URL=... --dart-define=VIEW=dtl|faceOn`: real pipeline on device. Prints RESULT/TRACE lines and holds the results screen for screenshots.
-  - Batch mode: `--dart-define=VIDEOS=url1~dtl,url2~faceOn,...` runs many clips in one install (about 2 minutes per clip, versus about 10 for one run each). Lines are prefixed `CLIP n`. Use `~` not `|`, because flutter.bat treats `|` as a pipe.
+- `flutter test integration_test/pipeline_test.dart -d emulator-5554 --dart-define=VIDEO_URL=...`: real pipeline on device. Prints RESULT/TRACE lines and holds the results screen for screenshots.
+  - Batch mode: `--dart-define=VIDEOS=url1,url2,...` runs many clips in one install (about 2 minutes per clip, versus about 10 for one run each). Lines are prefixed `CLIP n`. Keep `|` out of dart-defines, because flutter.bat treats it as a pipe.
 - Test clips (cut from a CC-licensed Wikimedia video) are in `C:\Users\mackm\dev\golf_test_videos`. Serve them with `python -m http.server 8765`, run `adb reverse tcp:8765 tcp:8765`, and use `http://localhost:8765/faceon.mp4` or `dtl.mp4`.
 - Release builds have R8 minify turned off in `android/app/build.gradle.kts`. With it on, R8 strips ML Kit's WorkManager/Room classes and the app crashes on launch.
 - `faceon_click.mp4` in the test clips folder is the face-on sample plus real driving-range audio (from the CC BY-SA "Golf driving range in kanagawa 2023 June 27" on Wikimedia), placed so a strike lands at true contact (9.133s). It tests the strike-sound path. `samples/sample_down_the_line_with_sound.mp4` (Pexels 14980434) has a real recorded strike at 2.662s.

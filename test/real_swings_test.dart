@@ -180,7 +180,9 @@ void main() {
     test('recognizes $name as ${view.label}', () {
       final frames = loadSwing(name);
       final keys = detectKeyFrames(frames)!;
-      expect(detectCameraView(frames, keys.address), view);
+      final seen = detectCameraView(frames, keys.address);
+      expect(seen.view, view);
+      expect(seen.clear, isTrue);
     });
   }
 

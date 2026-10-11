@@ -2,7 +2,7 @@
 
 Run.bat copies these into the emulator's photo library, so you can try the app with **Upload from library** right away. Each one is a different golfer, filmed the way people really film swings: different angles, a hand-held camera, a practice swing first.
 
-You don't have to get the camera angle right. If the video clearly shows a different angle from the one you picked, the app switches and tells you.
+The app works out the camera angle from the video, so there's nothing to set.
 
 | File | Golfer | Camera | Notes |
 |---|---|---|---|
