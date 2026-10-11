@@ -123,6 +123,25 @@ void main() {
     expect(analysis.frames[analysis.keyFrames!.impact].timeMs, closeTo(2000, 70));
   });
 
+  test('despike removes a one-frame elbow glitch but keeps real motion', () {
+    final clean = [for (var ms = 0; ms < 3000; ms += 33) fakeFrame(ms)];
+    const elbow = PoseLandmarkType.leftElbow;
+    // Frame 20 (at the top, hands still): elbow jumps 40px and comes back.
+    final glitched = [...clean];
+    final j = clean[20].joints![elbow]!;
+    glitched[20] = clean[20].withJoints(
+        {...clean[20].joints!, elbow: Joint(j.x + 40, j.y - 30, 0.4)});
+
+    final fixed = despike(glitched);
+    expect((fixed[20].at(elbow) - clean[20].at(elbow)).distance, lessThan(5));
+
+    // Fast downswing frames (1.7-2.0s): hands move ~40px/frame. Untouched.
+    for (var i = 52; i < 60; i++) {
+      expect(fixed[i].at(PoseLandmarkType.leftWrist),
+          clean[i].at(PoseLandmarkType.leftWrist));
+    }
+  });
+
   test('reports an error when no swing happens', () {
     final still = [for (var ms = 0; ms < 2000; ms += 33) fakeFrame(0)]
         .indexed

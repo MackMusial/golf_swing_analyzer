@@ -196,6 +196,27 @@ class SwingAnalysis {
     return (100 - penalty * 100 / metrics.length * 1.5).round().clamp(0, 100);
   }
 
+  /// Pose at [timeMs], blended between the analyzed frames either side so the
+  /// skeleton glides during playback instead of snapping from frame to frame.
+  /// Falls back to [frameNear] across big gaps (e.g. frames with no golfer).
+  PoseFrame? poseAt(int timeMs, {int maxSpanMs = 250}) {
+    var hi = frames.indexWhere((f) => f.timeMs >= timeMs);
+    if (hi <= 0) return frameNear(timeMs);
+    final a = frames[hi - 1], b = frames[hi];
+    final span = b.timeMs - a.timeMs;
+    if (span <= 0 || span > maxSpanMs) return frameNear(timeMs);
+    final t = (timeMs - a.timeMs) / span;
+    return a.withJoints({
+      for (final MapEntry(key: type, value: ja) in a.joints!.entries)
+        if (b.joints![type] case final jb?)
+          type: Joint(
+            ja.x + (jb.x - ja.x) * t,
+            ja.y + (jb.y - ja.y) * t,
+            ja.likelihood + (jb.likelihood - ja.likelihood) * t,
+          ),
+    });
+  }
+
   /// Frame whose timestamp is closest to [timeMs], or null if none is near.
   PoseFrame? frameNear(int timeMs, {int maxGapMs = 120}) {
     if (frames.isEmpty) return null;

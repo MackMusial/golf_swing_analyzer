@@ -76,9 +76,11 @@ int contactFrame(List<PoseFrame> frames, int strikeMs) {
   return best;
 }
 
-/// Light 1-2-1 smoothing over neighbouring frames to cut detector jitter.
-List<PoseFrame> smoothFrames(List<PoseFrame> frames) {
-  if (frames.length < 3) return frames;
+/// Cleans up detector noise: first removes spikes (see [despike]), then a
+/// light 1-2-1 blend over neighbouring frames.
+List<PoseFrame> smoothFrames(List<PoseFrame> input) {
+  if (input.length < 3) return input;
+  final frames = despike(input);
   return [
     for (var i = 0; i < frames.length; i++)
       if (i == 0 || i == frames.length - 1)
@@ -90,6 +92,47 @@ List<PoseFrame> smoothFrames(List<PoseFrame> frames) {
                 frames[i + 1].joints![entry.key]),
         }),
   ];
+}
+
+/// Replaces joints that jump away from their neighbours for a frame or two
+/// and come back, the classic detector glitch when a limb is hidden (elbows at
+/// the top of the backswing). Each joint is compared with the median of the
+/// 5 frames around it; if it's more than a few percent of the torso length
+/// off, it's moved to that median. Steady motion, even fast motion, is left
+/// alone, because the median of a steady trend is the middle frame itself.
+List<PoseFrame> despike(List<PoseFrame> frames) {
+  const half = 2;
+  if (frames.length < 2 * half + 1) return frames;
+  final out = <PoseFrame>[];
+  for (var i = 0; i < frames.length; i++) {
+    final f = frames[i];
+    if (i < half || i >= frames.length - half) {
+      out.add(f);
+      continue;
+    }
+    final tol = math.max(2.0, torsoLength(f) * 0.06);
+    final joints = <PoseLandmarkType, Joint>{};
+    for (final MapEntry(key: type, value: j) in f.joints!.entries) {
+      final xs = <double>[], ys = <double>[];
+      for (var k = i - half; k <= i + half; k++) {
+        final n = frames[k].joints![type];
+        if (n != null) {
+          xs.add(n.x);
+          ys.add(n.y);
+        }
+      }
+      if (xs.length < 2 * half + 1) {
+        joints[type] = j;
+        continue;
+      }
+      final mx = _median(xs), my = _median(ys);
+      joints[type] = (Offset(j.x, j.y) - Offset(mx, my)).distance > tol
+          ? Joint(mx, my, j.likelihood)
+          : j;
+    }
+    out.add(f.withJoints(joints));
+  }
+  return out;
 }
 
 Joint _blend(Joint? prev, Joint cur, Joint? next) {
@@ -125,11 +168,14 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   final scale = _median(frames.map(torsoLength).toList());
   if (scale <= 0) return null;
 
-  // Hand speed in torso-lengths per second.
+  // Hand speed in torso-lengths per second, measured across a few frames so
+  // a one-frame tracking glitch can't pose as the fastest moment.
+  const reach = 2;
   final speed = List<double>.filled(n, 0);
   for (var i = 1; i < n; i++) {
-    final dt = (frames[i].timeMs - frames[i - 1].timeMs) / 1000;
-    if (dt > 0) speed[i] = (hands[i] - hands[i - 1]).distance / dt / scale;
+    final a = math.max(0, i - reach), b = math.min(n - 1, i + reach - 1);
+    final dt = (frames[b].timeMs - frames[a].timeMs) / 1000;
+    if (dt > 0) speed[i] = (hands[b] - hands[a]).distance / dt / scale;
   }
 
   // Walks from [start] in [dir] following the hands while they keep getting

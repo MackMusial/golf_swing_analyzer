@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/swing_models.dart';
@@ -15,11 +16,18 @@ class ResultsScreen extends StatefulWidget {
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
-class _ResultsScreenState extends State<ResultsScreen> {
+class _ResultsScreenState extends State<ResultsScreen>
+    with SingleTickerProviderStateMixin {
   late final VideoPlayerController _video;
+  late final Ticker _ticker;
   bool _ready = false;
   bool _showSkeleton = true;
   double _speed = 0.5;
+
+  // The player only reports its position every 100ms. To move the skeleton
+  // smoothly, remember the last report and run our own clock from there.
+  Duration _lastPosition = Duration.zero;
+  final _sinceLastPosition = Stopwatch();
 
   SwingAnalysis get a => widget.analysis;
 
@@ -28,16 +36,41 @@ class _ResultsScreenState extends State<ResultsScreen> {
     super.initState();
     _video = VideoPlayerController.file(File(a.videoPath))
       ..setLooping(true)
-      ..addListener(() => setState(() {}));
+      ..addListener(_onVideoChanged);
     _video.initialize().then((_) {
       if (!mounted) return;
       _video.setPlaybackSpeed(_speed);
       setState(() => _ready = true);
     });
+    _ticker = createTicker((_) {
+      if (_video.value.isPlaying) setState(() {});
+    })
+      ..start();
+  }
+
+  void _onVideoChanged() {
+    if (_video.value.position != _lastPosition) {
+      _lastPosition = _video.value.position;
+      _sinceLastPosition
+        ..reset()
+        ..start();
+    }
+    setState(() {});
+  }
+
+  /// Best estimate of the frame on screen right now.
+  int get _livePositionMs {
+    final reported = _video.value.position.inMilliseconds;
+    if (!_video.value.isPlaying) return reported;
+    final ahead = (_sinceLastPosition.elapsedMilliseconds * _speed).round();
+    // Don't run more than one report interval ahead if reports stall.
+    return (_lastPosition.inMilliseconds + ahead.clamp(0, (150 * _speed).round()))
+        .clamp(0, _video.value.duration.inMilliseconds);
   }
 
   @override
   void dispose() {
+    _ticker.dispose();
     _video.dispose();
     super.dispose();
   }
@@ -49,12 +82,15 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _video.seekTo(Duration(milliseconds: a.frames[keys[phase]].timeMs));
   }
 
-  void _cycleSpeed() {
-    const speeds = [1.0, 0.5, 0.25];
-    final next = speeds[(speeds.indexOf(_speed) + 1) % speeds.length];
-    _video.setPlaybackSpeed(next);
-    setState(() => _speed = next);
+  static const _speeds = [0.25, 0.5, 1.0, 2.0, 3.0];
+
+  void _setSpeed(double speed) {
+    _video.setPlaybackSpeed(speed);
+    setState(() => _speed = speed);
   }
+
+  static String _speedLabel(double s) =>
+      '${s == s.roundToDouble() ? s.toInt() : s}x';
 
   double get _aspect {
     if (a.frames.isNotEmpty) return a.frames.first.width / a.frames.first.height;
@@ -111,10 +147,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   Widget _player(BuildContext context, int positionMs) {
     final maxHeight = MediaQuery.of(context).size.height * 0.55;
-    final frame = a.frameNear(positionMs);
+    final playing = _video.value.isPlaying;
+    final still = a.frameNear(positionMs);
     // While paused, show the exact analyzed frame so the skeleton lines up
     // perfectly (players don't always repaint after a seek while paused).
-    final showStill = frame != null && _ready && !_video.value.isPlaying;
+    // While playing, blend between analyzed frames so the skeleton glides.
+    final showStill = still != null && _ready && !playing;
+    final frame = playing ? a.poseAt(_livePositionMs) : still;
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
@@ -126,7 +165,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
           child: Stack(fit: StackFit.expand, children: [
             if (_ready) VideoPlayer(_video) else const Center(child: CircularProgressIndicator()),
             if (showStill)
-              Image.file(File(frame.imagePath), fit: BoxFit.fill, gaplessPlayback: true),
+              Image.file(File(still.imagePath), fit: BoxFit.fill, gaplessPlayback: true),
             if (_showSkeleton)
               CustomPaint(
                 painter: SkeletonPainter(
@@ -161,7 +200,23 @@ class _ResultsScreenState extends State<ResultsScreen> {
               : null,
         ),
       ),
-      TextButton(onPressed: _cycleSpeed, child: Text('${_speed}x')),
+      PopupMenuButton<double>(
+        tooltip: 'Playback speed',
+        initialValue: _speed,
+        onSelected: _setSpeed,
+        itemBuilder: (_) => [
+          for (final s in _speeds)
+            PopupMenuItem(value: s, child: Text(_speedLabel(s))),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(_speedLabel(_speed),
+                style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+            Icon(Icons.arrow_drop_down, color: theme.colorScheme.primary),
+          ]),
+        ),
+      ),
       IconButton(
         tooltip: 'Show joints',
         icon: Icon(_showSkeleton ? Icons.accessibility_new : Icons.accessibility_new_outlined,

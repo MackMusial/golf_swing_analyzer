@@ -6,6 +6,7 @@ import 'package:golf_swing_analyzer/analysis/swing_analyzer.dart';
 import 'package:golf_swing_analyzer/models/swing_models.dart';
 import 'package:golf_swing_analyzer/screens/results_screen.dart';
 import 'package:golf_swing_analyzer/services/swing_processor.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -43,7 +44,13 @@ void main() {
 
     for (final f in analysis.frames) {
       final h = handPos(f), hip = midHip(f);
-      debugPrint('TRACE ${f.timeMs} hand=${h.dx.round()},${h.dy.round()} hip=${hip.dx.round()},${hip.dy.round()} torso=${torsoLength(f).round()}');
+      String p(PoseLandmarkType t) {
+        final o = f.at(t);
+        return '${o.dx.round()},${o.dy.round()}';
+      }
+      debugPrint('TRACE ${f.timeMs} hand=${h.dx.round()},${h.dy.round()} hip=${hip.dx.round()},${hip.dy.round()} torso=${torsoLength(f).round()}'
+          ' ls=${p(PoseLandmarkType.leftShoulder)} rs=${p(PoseLandmarkType.rightShoulder)}'
+          ' le=${p(PoseLandmarkType.leftElbow)} re=${p(PoseLandmarkType.rightElbow)}');
     }
     debugPrint('RESULT frames=${analysis.frames.length}/${analysis.totalFramesSampled} error=${analysis.error}');
     debugPrint('RESULT impactSoundMs=${analysis.impactSoundMs}');
