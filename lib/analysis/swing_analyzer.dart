@@ -17,6 +17,7 @@ SwingAnalysis analyzeSwing({
   required SwingSettings settings,
   required List<PoseFrame> rawFrames,
   int? impactSoundMs,
+  double fps = 30,
 }) {
   final posed = rawFrames.where((f) => f.hasPose).toList();
   SwingAnalysis result(
@@ -31,6 +32,7 @@ SwingAnalysis analyzeSwing({
     videoPath: videoPath,
     settings: used ?? settings,
     notice: notice,
+    fps: fps,
     frames: frames,
     totalFramesSampled: rawFrames.length,
     keyFrames: keys,
@@ -129,6 +131,7 @@ SwingAnalysis? nudgeKeyFrame(SwingAnalysis a, SwingPhase phase, int step) {
     impactSoundMs: soundMs,
     notice: a.notice,
     adjusted: adjusted,
+    fps: a.fps,
   );
 }
 

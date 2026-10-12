@@ -5,7 +5,7 @@ Flutter app (iOS + Android): record or upload a swing video, track the golfer's 
 Original plan doc (Python-based, superseded by this Flutter build): https://claude.ai/artifact/3VfZRMsYMn6XgV438G99C2
 
 ## Pipeline
-1. **Pick/record**: `image_picker` (`lib/screens/home_screen.dart`). The user picks handedness. The camera angle is detected, not asked (people got it wrong, and it decides which metrics apply).
+1. **Pick/record**: library videos via `image_picker` (`lib/screens/home_screen.dart`). "Record a swing" opens our own camera screen (`lib/screens/record_screen.dart`, `camera` plugin) that films at the highest frame rate the back camera supports (240/120/60, with audio for the strike sound). At 30fps the clubhead moves 1.2-1.5 m between frames, so no frame shows it on the ball; Mack noticed. The plugin silently accepts any fps, so the native `maxCameraFps` channel method reports the real limit first (Android: AE target fps ranges, usually 30-60, since the plugin can't use the high-speed session; iOS: 1280x720 formats, 120/240 on iPhones; untested, needs a Mac). Results show a note on impact for videos under 100fps. The user picks handedness. The camera angle is detected, not asked (people got it wrong, and it decides which metrics apply).
 2. **Frame extraction**: our own platform channel `golf_swing_analyzer/frames` with `probe` and `extractFrames`.
    - Android: `android/app/src/main/kotlin/.../MainActivity.kt` (MediaMetadataRetriever, `OPTION_CLOSEST`).
    - iOS: `FrameExtractor` in `ios/Runner/AppDelegate.swift` (AVAssetImageGenerator, zero tolerance).

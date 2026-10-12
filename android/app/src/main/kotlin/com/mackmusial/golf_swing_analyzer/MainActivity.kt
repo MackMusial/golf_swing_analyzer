@@ -1,6 +1,9 @@
 package com.mackmusial.golf_swing_analyzer
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.graphics.Matrix
 import android.media.AudioFormat
 import android.media.MediaCodec
@@ -29,6 +32,10 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "golf_swing_analyzer/frames")
             .setMethodCallHandler { call, result ->
+                if (call.method == "maxCameraFps") {
+                    result.success(maxCameraFps())
+                    return@setMethodCallHandler
+                }
                 val path = call.argument<String>("path")
                 if (path == null) {
                     result.error("BAD_ARGS", "path is required", null)
@@ -61,6 +68,23 @@ class MainActivity : FlutterActivity() {
                     }
                 }
             }
+    }
+
+    /**
+     * Highest frame rate the back camera offers for normal video, which is
+     * what the camera plugin can use. (Phones also have a separate high-speed
+     * mode the plugin can't reach.) The plugin accepts any requested rate
+     * without complaint, so the app asks here first.
+     */
+    private fun maxCameraFps(): Int? {
+        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val id = manager.cameraIdList.firstOrNull {
+            manager.getCameraCharacteristics(it)
+                .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+        } ?: manager.cameraIdList.firstOrNull() ?: return null
+        val ranges = manager.getCameraCharacteristics(id)
+            .get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+        return ranges?.maxOfOrNull { it.upper }
     }
 
     private fun <T> withRetriever(path: String, block: (MediaMetadataRetriever) -> T): T {

@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/swing_models.dart';
 import 'analyzing_screen.dart';
+import 'record_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -68,7 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 28),
             FilledButton.icon(
-              onPressed: () => _getVideo(ImageSource.camera),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => RecordScreen(
+                  settings: SwingSettings(handedness: _handedness),
+                ),
+              )),
               icon: const Icon(Icons.videocam),
               label: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 14),
@@ -96,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     for (final tip in const [
                       'Film from straight in front of you (face-on) or from behind, down your target line. The app works out which.',
                       'Prop the phone up at about waist height; don\'t hand-hold it.',
+                      'Record in the app: it films in slow motion when your phone can, so you see the club hit the ball. Library videos are often 30fps, where contact falls between frames.',
                       'Get your whole body in frame, head to feet, with some room above.',
                       'One swing per video, 3–6 seconds long works best.',
                       'Good light and clothes that contrast with the background help tracking.',

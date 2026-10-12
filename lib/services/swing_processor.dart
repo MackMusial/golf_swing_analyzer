@@ -108,6 +108,7 @@ class SwingProcessor {
         settings: settings,
         rawFrames: allFrames,
         impactSoundMs: strikeMs,
+        fps: fps,
       );
     } finally {
       await detector.close();

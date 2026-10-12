@@ -183,6 +183,10 @@ class SwingAnalysis {
   /// Key moments the user moved by hand on the results screen.
   final Set<SwingPhase> adjusted;
 
+  /// Frame rate of the video. Below about 100fps the clubhead moves over a
+  /// metre between frames, so no frame shows it on the ball.
+  final double fps;
+
   const SwingAnalysis({
     required this.videoPath,
     required this.settings,
@@ -194,6 +198,7 @@ class SwingAnalysis {
     this.impactSoundMs,
     this.notice,
     this.adjusted = const {},
+    this.fps = 30,
   });
 
   /// Metrics outside their ideal range, worst first.

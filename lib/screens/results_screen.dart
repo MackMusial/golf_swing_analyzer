@@ -146,6 +146,17 @@ class _ResultsScreenState extends State<ResultsScreen>
               ),
             ),
           if (keys != null && _phase != null) _nudgeRow(theme, keys, _phase!),
+          if (keys != null && _phase == SwingPhase.impact && a.fps < 100)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                'This video is ${a.fps.round()} fps. The club moves over a metre between '
+                'frames, so no frame shows it touching the ball: this is the closest one. '
+                'Record in the app to film in slow motion and see the hit.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
           const SizedBox(height: 12),
           if (a.error != null) _errorCard(theme) else ...[
             if (a.notice != null) _noticeCard(theme),

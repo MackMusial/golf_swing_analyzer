@@ -5,7 +5,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Record your golf swing so it can be analyzed.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Video recording includes audio.</string>
+	<string>The sound of the club hitting the ball pinpoints the moment of impact.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Pick a swing video from your library to analyze.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

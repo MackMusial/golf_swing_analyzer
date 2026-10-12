@@ -28,6 +28,10 @@ enum FrameExtractor {
   static func register(messenger: FlutterBinaryMessenger) {
     let ch = FlutterMethodChannel(name: "golf_swing_analyzer/frames", binaryMessenger: messenger)
     ch.setMethodCallHandler { call, result in
+      if call.method == "maxCameraFps" {
+        result(maxCameraFps())
+        return
+      }
       guard let args = call.arguments as? [String: Any], let path = args["path"] as? String else {
         result(FlutterError(code: "BAD_ARGS", message: "path is required", details: nil))
         return
@@ -63,6 +67,23 @@ enum FrameExtractor {
       }
     }
     channel = ch
+  }
+
+  /// Highest frame rate the back camera offers at 1280x720, the size the
+  /// camera plugin records with ResolutionPreset.high. The plugin picks the
+  /// closest rate to what's asked without saying, so the app asks here first.
+  private static func maxCameraFps() -> Int? {
+    guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    else { return nil }
+    var best: Double = 0
+    for format in device.formats {
+      let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+      guard size.width == 1280 && size.height == 720 else { continue }
+      for range in format.videoSupportedFrameRateRanges {
+        best = max(best, range.maxFrameRate)
+      }
+    }
+    return best > 0 ? Int(best) : nil
   }
 
   private static func videoTrack(_ asset: AVAsset) throws -> AVAssetTrack {
