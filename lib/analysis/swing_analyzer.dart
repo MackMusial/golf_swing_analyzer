@@ -94,6 +94,44 @@ SwingAnalysis analyzeSwing({
   );
 }
 
+/// Moves one key moment by [step] analyzed frames, as a correction from the
+/// user, and recomputes the metrics. Near impact every video frame is
+/// analyzed, so a step there is exactly one frame. Returns null if the move
+/// would put the moments out of order or off the end.
+SwingAnalysis? nudgeKeyFrame(SwingAnalysis a, SwingPhase phase, int step) {
+  final k = a.keyFrames;
+  if (k == null) return null;
+  int at(SwingPhase p) => p == phase ? k[p] + step : k[p];
+  final keys = KeyFrames(
+    address: at(SwingPhase.address),
+    top: at(SwingPhase.top),
+    impact: at(SwingPhase.impact),
+    finish: at(SwingPhase.finish),
+  );
+  if (keys.address < 0 ||
+      !(keys.address < keys.top &&
+          keys.top < keys.impact &&
+          keys.impact <= keys.finish) ||
+      keys.finish >= a.frames.length) {
+    return null;
+  }
+  final adjusted = {...a.adjusted, phase};
+  // Once the user has placed impact, their frame wins over the strike sound.
+  final soundMs = adjusted.contains(SwingPhase.impact) ? null : a.impactSoundMs;
+  return SwingAnalysis(
+    videoPath: a.videoPath,
+    settings: a.settings,
+    frames: a.frames,
+    totalFramesSampled: a.totalFramesSampled,
+    keyFrames: keys,
+    metrics: computeMetrics(a.frames, keys, a.settings, impactMs: soundMs),
+    error: a.error,
+    impactSoundMs: soundMs,
+    notice: a.notice,
+    adjusted: adjusted,
+  );
+}
+
 /// Index of the frame on screen when the strike was heard: the last one at or
 /// before [strikeMs]. A frame after it would already show the ball leaving.
 int contactFrame(List<PoseFrame> frames, int strikeMs) {

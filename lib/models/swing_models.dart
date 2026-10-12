@@ -180,6 +180,9 @@ class SwingAnalysis {
   /// the camera angle being corrected.
   final String? notice;
 
+  /// Key moments the user moved by hand on the results screen.
+  final Set<SwingPhase> adjusted;
+
   const SwingAnalysis({
     required this.videoPath,
     required this.settings,
@@ -190,6 +193,7 @@ class SwingAnalysis {
     this.error,
     this.impactSoundMs,
     this.notice,
+    this.adjusted = const {},
   });
 
   /// Metrics outside their ideal range, worst first.

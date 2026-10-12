@@ -114,6 +114,41 @@ void main() {
     expect(tempoOf(analysis), lessThan(tempoOf(handsOnly) * 0.9));
   });
 
+  test('nudging impact moves it a frame and recomputes the metrics', () {
+    final analysis = analyzeSwing(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      rawFrames: frames,
+      impactSoundMs: 2132,
+    );
+    final keys = analysis.keyFrames!;
+    final later = nudgeKeyFrame(analysis, SwingPhase.impact, 1)!;
+    expect(later.keyFrames!.impact, keys.impact + 1);
+    expect(later.adjusted, {SwingPhase.impact});
+    // The user's frame now wins over the strike sound.
+    expect(later.impactSoundMs, isNull);
+    double tempoOf(SwingAnalysis a) =>
+        a.metrics.firstWhere((m) => m.id == 'tempo').value;
+    final back = nudgeKeyFrame(later, SwingPhase.impact, -1)!;
+    expect(tempoOf(back), greaterThan(tempoOf(later)));
+    expect(back.keyFrames!.impact, keys.impact);
+  });
+
+  test('nudging refuses to put key moments out of order', () {
+    final analysis = analyzeSwing(
+      videoPath: 'x.mp4',
+      settings: const SwingSettings(),
+      rawFrames: frames,
+    );
+    final keys = analysis.keyFrames!;
+    expect(
+        nudgeKeyFrame(analysis, SwingPhase.top, keys.impact - keys.top), isNull);
+    expect(nudgeKeyFrame(analysis, SwingPhase.address, -keys.address - 1),
+        isNull);
+    expect(nudgeKeyFrame(analysis, SwingPhase.finish,
+        analysis.frames.length - keys.finish), isNull);
+  });
+
   test('ignores a strike sound outside the downswing', () {
     final analysis = analyzeSwing(
       videoPath: 'x.mp4',

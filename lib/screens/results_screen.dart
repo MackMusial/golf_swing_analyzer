@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:video_player/video_player.dart';
 
+import '../analysis/swing_analyzer.dart';
 import '../models/swing_models.dart';
 import '../widgets/skeleton_painter.dart';
 
@@ -29,7 +30,12 @@ class _ResultsScreenState extends State<ResultsScreen>
   Duration _lastPosition = Duration.zero;
   final _sinceLastPosition = Stopwatch();
 
-  SwingAnalysis get a => widget.analysis;
+  /// The analysis on screen; replaced when the user nudges a key moment.
+  late SwingAnalysis _analysis = widget.analysis;
+  SwingAnalysis get a => _analysis;
+
+  /// The key moment last jumped to, which the ◀ ▶ buttons move.
+  SwingPhase? _phase;
 
   @override
   void initState() {
@@ -82,8 +88,18 @@ class _ResultsScreenState extends State<ResultsScreen>
   void _seekToPhase(SwingPhase phase) {
     final keys = a.keyFrames;
     if (keys == null) return;
+    setState(() => _phase = phase);
     _video.pause();
     _video.seekTo(Duration(milliseconds: a.frames[keys[phase]].timeMs));
+  }
+
+  void _nudge(int step) {
+    final phase = _phase;
+    if (phase == null) return;
+    final moved = nudgeKeyFrame(a, phase, step);
+    if (moved == null) return;
+    setState(() => _analysis = moved);
+    _seekToPhase(phase);
   }
 
   static const _speeds = [0.25, 0.5, 1.0, 2.0, 3.0];
@@ -121,13 +137,15 @@ class _ResultsScreenState extends State<ResultsScreen>
                 spacing: 8,
                 children: [
                   for (final phase in SwingPhase.values)
-                    ActionChip(
+                    ChoiceChip(
                       label: Text(phase.label),
-                      onPressed: () => _seekToPhase(phase),
+                      selected: _phase == phase,
+                      onSelected: (_) => _seekToPhase(phase),
                     ),
                 ],
               ),
             ),
+          if (keys != null && _phase != null) _nudgeRow(theme, keys, _phase!),
           const SizedBox(height: 12),
           if (a.error != null) _errorCard(theme) else ...[
             if (a.notice != null) _noticeCard(theme),
@@ -140,7 +158,7 @@ class _ResultsScreenState extends State<ResultsScreen>
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Text(
               'Tracked a body in ${a.frames.length} of ${a.totalFramesSampled} frames. '
-              '${a.impactSoundMs != null ? 'Impact was found from the sound of the strike. ' : 'No strike sound was heard, so impact is estimated from your hands. '}'
+              '${a.adjusted.contains(SwingPhase.impact) ? 'You set the impact frame. ' : a.impactSoundMs != null ? 'Impact was found from the sound of the strike. ' : 'No strike sound was heard, so impact is estimated from your hands; if it looks off, tap Impact and move it with the arrows. '}'
               'Measurements are 2D estimates from one camera angle (${a.settings.view.label}), so treat them as a guide, not gospel.',
               style: theme.textTheme.bodySmall,
             ),
@@ -229,6 +247,37 @@ class _ResultsScreenState extends State<ResultsScreen>
         onPressed: () => setState(() => _showSkeleton = !_showSkeleton),
       ),
     ]);
+  }
+
+  /// ◀ ▶ buttons to move the selected key moment a frame at a time, for when
+  /// the detected frame is slightly off (impact without a strike sound).
+  Widget _nudgeRow(ThemeData theme, KeyFrames keys, SwingPhase phase) {
+    final ms = a.frames[keys[phase]].timeMs;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'One frame earlier',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: nudgeKeyFrame(a, phase, -1) == null ? null : () => _nudge(-1),
+          ),
+          Expanded(
+            child: Text(
+              '${phase.label} at ${(ms / 1000).toStringAsFixed(2)}s'
+              '${a.adjusted.contains(phase) ? ' (moved by you)' : ''}',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          IconButton(
+            tooltip: 'One frame later',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: nudgeKeyFrame(a, phase, 1) == null ? null : () => _nudge(1),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _errorCard(ThemeData theme) => Card(

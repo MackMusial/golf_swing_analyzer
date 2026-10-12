@@ -113,6 +113,12 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
       await tester.pump();
       await hold('impact');
+      // The arrows move the selected moment a frame and rescore.
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
+      await tester.pump();
+      expect(find.textContaining('(moved by you)'), findsOneWidget);
+      await hold('nudged');
       await tester.tap(find.text('Top').first);
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 1)));
       await tester.pump();

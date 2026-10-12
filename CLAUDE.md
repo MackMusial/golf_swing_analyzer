@@ -26,6 +26,7 @@ Original plan doc (Python-based, superseded by this Flutter build): https://clau
    - Compute metrics and compare them to ideal ranges (`Metric` in `lib/models/swing_models.dart`). A lead arm under 90° at the top means the arm was hidden and the detector guessed, so that metric is skipped.
 5. **Results** (`lib/screens/results_screen.dart`): video with skeleton overlay, keyframe jump chips, score, top-3 fixes, key-position thumbnails, all metrics. Speeds 0.25x–3x from a menu.
    - When paused, it shows the exact analyzed frame so the skeleton lines up.
+   - Tapping a key-moment chip selects it; ◀ ▶ move it one analyzed frame (`nudgeKeyFrame`: one video frame near impact) and the metrics recompute. A user-placed impact overrides the strike sound. This is the fallback for silent videos where the hands-based impact is a frame off.
    - While playing, `SwingAnalysis.poseAt` blends between analyzed frames. A Ticker extrapolates the position, because video_player only reports it every 100ms.
 
 ## Windows scripts (repo root)
