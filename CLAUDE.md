@@ -16,8 +16,7 @@ Original plan doc (Python-based, superseded by this Flutter build): https://clau
 3b. **Contact** (`_refineImpact` in `swing_processor.dart`):
    - Native `audioEnvelope` returns click energy (mean squared sample-to-sample change) every 2ms over top→finish. `findStrikeMs` (`lib/analysis/impact_sound.dart`) picks the strike click in the late downswing, nearest the hand estimate, so other golfers' shots are ignored.
    - Then every video frame within ~±150ms of contact is added and pose-tracked. The impact keyframe is the last frame at or before the strike sound.
-   - No sound (practice swing, muted, silent track): impact is the middle of the flat bottom of the hand path. The single lowest frame lands early.
-   - Measured on the face-on sample: sound gets the exact contact frame. Hands alone are about 2 frames early.
+   - No sound (practice swing, muted, silent track): impact is the middle of the flat bottom of the hand path, plus 35ms because the hands lead the club. Checked frame by frame on 7 real swings: 3 exact, 4 one frame off, no bias (before the 35ms it averaged a frame early). Sound gets the exact frame.
 4. **Analysis** (pure Dart, `lib/analysis/swing_analyzer.dart`):
    - `smoothFrames` = `despike` (5-frame median; a joint more than 6% of torso length from it is replaced) followed by a 1-2-1 blend. Despike fixes the arm lines thrashing at the top of the backswing, where the elbows are half hidden.
    - Find address/top/impact/finish from the hand path, searching outward from the fastest hand movement (measured across ±2 frames so one glitch can't win) so it stays within one swing.

@@ -34,7 +34,9 @@ List<PoseFrame> loadSwing(String name) {
 }
 
 /// Hand-labelled key moments from watching each clip's hand path: the window
-/// (ms) each one must land in. Address is the last still moment before the
+/// (ms) each one must land in. Where noted, impact is the exact frame the
+/// clubhead meets the ball, found by stepping through the video, and the
+/// window allows one frame either side. Address is the last still moment before the
 /// takeaway (shoulders and hands turning together), not some earlier point
 /// while the golfer is still settling in or pressing the hands forward.
 /// Finish is when the follow-through stops.
@@ -54,7 +56,7 @@ const expected = {
   'pexels_14980434': (
     address: (9800, 10050),
     top: (10930, 11070),
-    impact: (11360, 11440),
+    impact: (11400, 11470),
     finish: (11630, 12010),
   ),
   'pexels_6541665': (
@@ -72,14 +74,14 @@ const expected = {
   'pexels_6542255': (
     address: (2850, 3050),
     top: (4250, 4750),
-    impact: (5290, 5380),
+    impact: (5330, 5400),
     finish: (6000, 6320),
   ),
   // A full practice swing (0.5-2.9s) comes first. The real one is faster.
   'pexels_6573621': (
     address: (5250, 5420),
     top: (6100, 6520),
-    impact: (6760, 6840),
+    impact: (6830, 6900),
     finish: (7150, 7320),
   ),
   // One-piece takeaway from 8.0s: the shoulders turn with the hands, even
@@ -87,7 +89,7 @@ const expected = {
   'pexels_37080178': (
     address: (7900, 8100),
     top: (8830, 9000),
-    impact: (9230, 9300),
+    impact: (9230, 9310),
     finish: (9560, 9720),
   ),
   // Hand-held camera that pans to follow the golfer. Hands hold at the top
@@ -104,7 +106,7 @@ const expected = {
   'pexels_38098104': (
     address: (11600, 11800),
     top: (12650, 12900),
-    impact: (13130, 13240),
+    impact: (13165, 13240),
     finish: (13500, 13700),
   ),
   // Slow motion. Impact is the strike-sound frame (9134ms), which the hands
@@ -112,13 +114,13 @@ const expected = {
   'sample_faceon': (
     address: (700, 1250),
     top: (6560, 7100),
-    impact: (9000, 9170),
+    impact: (9090, 9170),
     finish: (11950, 12900),
   ),
   'sample_dtl': (
     address: (2200, 2500),
     top: (6400, 7000),
-    impact: (9100, 9300),
+    impact: (9200, 9270),
     finish: (12000, 12500),
   ),
 };

@@ -240,8 +240,10 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   final lowest = climb(fastest, movingDown ? 1 : -1, higher: false);
   final top = climb(lowest, -1, higher: true);
   // Around impact the hands travel almost level for a moment, so the single
-  // lowest frame is mostly detector noise and tends to land early. Use the
-  // middle of that flat bottom instead.
+  // lowest frame is mostly detector noise. Take the middle of that flat
+  // bottom, then allow for the hands leading the club: checked frame by frame
+  // on six real swings, the clubhead met the ball 0-2 frames (at 30fps) after
+  // the hands' bottom, about one frame on average.
   final flatTol = scale * 0.035;
   var flatStart = lowest, flatEnd = lowest;
   while (flatStart - 1 > top &&
@@ -255,6 +257,13 @@ KeyFrames? detectKeyFrames(List<PoseFrame> frames) {
   final midMs = (frames[flatStart].timeMs + frames[flatEnd].timeMs) / 2;
   var impact = flatStart;
   while (impact + 1 <= flatEnd && frames[impact + 1].timeMs <= midMs) {
+    impact++;
+  }
+  const handLeadMs = 35;
+  final contactMs = frames[impact].timeMs + handLeadMs;
+  while (impact + 1 < n &&
+      (frames[impact + 1].timeMs - contactMs).abs() <
+          (frames[impact].timeMs - contactMs).abs()) {
     impact++;
   }
   // Golfers hold the finish, and the hands often keep drifting up slowly
@@ -411,9 +420,10 @@ List<Metric> computeMetrics(
 
   // Tempo: backswing time vs downswing time. Tour average is about 3:1.
   final back = peakTimeMs(frames, keys.top) - address.timeMs;
+  // The impact frame is already shifted past the hands' lowest point to when
+  // the club meets the ball, so use its time as is.
   final down =
-      (impactMs ?? peakTimeMs(frames, keys.impact)) -
-      peakTimeMs(frames, keys.top);
+      (impactMs ?? frames[keys.impact].timeMs) - peakTimeMs(frames, keys.top);
   if (back > 0 && down > 0) {
     metrics.add(
       Metric(

@@ -6,14 +6,15 @@ import 'package:golf_swing_analyzer/models/swing_models.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 /// Hand height (image y, smaller = higher) over time for a fake swing:
-/// still at address until 0.8s, backswing to 1.7s, downswing to 2.0s,
-/// follow-through to 2.5s, then hold.
+/// still at address until 0.8s, backswing to 1.7s, downswing to contact at
+/// 2.0s, follow-through to 2.5s, then hold. As in real swings, the hands
+/// bottom out a little before contact (1.965s), because they lead the club.
 double handY(double t) {
   double ease(double x) => (1 - math.cos(math.pi * x.clamp(0, 1))) / 2;
   if (t < 0.8) return 600;
   if (t < 1.7) return 600 - 350 * ease((t - 0.8) / 0.9);
-  if (t < 2.0) return 250 + 350 * ease((t - 1.7) / 0.3);
-  if (t < 2.5) return 600 - 400 * ease((t - 2.0) / 0.5);
+  if (t < 1.965) return 250 + 350 * ease((t - 1.7) / 0.265);
+  if (t < 2.5) return 600 - 400 * ease((t - 1.965) / 0.535);
   return 200;
 }
 
@@ -91,16 +92,17 @@ void main() {
   });
 
   test('strike sound sets the impact frame and tempo', () {
-    // Hands bottom out at 2000ms; say the strike was heard at 2066ms.
+    // Contact from the hands alone is about 2000ms; say the strike was heard
+    // at 2132ms.
     final analysis = analyzeSwing(
       videoPath: 'x.mp4',
       settings: const SwingSettings(),
       rawFrames: frames,
-      impactSoundMs: 2066,
+      impactSoundMs: 2132,
     );
-    expect(analysis.impactSoundMs, 2066);
-    // Last frame at or before the strike: 2046 (frames are every 33ms).
-    expect(analysis.frames[analysis.keyFrames!.impact].timeMs, 2046);
+    expect(analysis.impactSoundMs, 2132);
+    // Last frame at or before the strike: 2112 (frames are every 33ms).
+    expect(analysis.frames[analysis.keyFrames!.impact].timeMs, 2112);
     // A later impact means a longer downswing, so the tempo ratio drops.
     double tempoOf(SwingAnalysis a) =>
         a.metrics.firstWhere((m) => m.id == 'tempo').value;
